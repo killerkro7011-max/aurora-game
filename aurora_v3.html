@@ -67,8 +67,48 @@ function freshWorld() {
   return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative' };
 }
 function freshChar(worldId, worldName) {
-  return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'' };
+  return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'',
+    stats:{ STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50 },
+    mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10 }
+  };
 }
+
+function statGrade(v) {
+  if(v>=151) return 'A';
+  if(v>=111) return 'B';
+  if(v>=71)  return 'C';
+  if(v>=41)  return 'D';
+  return 'E';
+}
+function statColor(g) {
+  return {A:'#4ade80',B:'#60a5fa',C:'#facc15',D:'#f97316',E:'#f87171'}[g]||'#9ca3af';
+}
+function masteryStart(level) {
+  if(level>=91) return 150;
+  if(level>=61) return 110;
+  if(level>=31) return 70;
+  if(level>=11) return 40;
+  return 10;
+}
+function applyMasteryForLevel(ch) {
+  var base = masteryStart(ch.level||1);
+  ch.mastery = ch.mastery || {};
+  ['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){ if(!ch.mastery[s]||ch.mastery[s]<base) ch.mastery[s]=base; });
+}
+
+// Class presets — stat arrays [STR,DEX,CON,INT,WIS,CHA]
+var CLASS_PRESETS = {
+  'Knight':      { STR:140, DEX:80,  CON:150, INT:60,  WIS:70,  CHA:90,  desc:'Iron will and unbreakable defence. A wall of steel.' },
+  'Rogue':       { STR:70,  DEX:160, CON:70,  INT:90,  WIS:80,  CHA:110, desc:'Lightning reflexes and lethal precision from the shadows.' },
+  'Mage':        { STR:40,  DEX:70,  CON:50,  INT:180, WIS:130, CHA:90,  desc:'Reality bends to arcane intellect. Fragile but devastating.' },
+  'Ranger':      { STR:90,  DEX:140, CON:110, INT:80,  WIS:120, CHA:70,  desc:'At home in the wild. Patient, precise, and self-sufficient.' },
+  'Cleric':      { STR:80,  DEX:60,  CON:100, INT:90,  WIS:160, CHA:130, desc:'Divine conduit — heals allies and smites the unholy.' },
+  'Berserker':   { STR:190, DEX:90,  CON:170, INT:30,  WIS:30,  CHA:50,  desc:'Pure destructive force. Raw power with almost no control.' },
+  'Paladin':     { STR:130, DEX:70,  CON:120, INT:70,  WIS:110, CHA:140, desc:'Holy warrior. Righteous fury wrapped in divine armour.' },
+  'Assassin':    { STR:80,  DEX:180, CON:70,  INT:110, WIS:70,  CHA:100, desc:'Death delivered silently. Every move calculated.' },
+  'Scholar':     { STR:30,  DEX:60,  CON:50,  INT:190, WIS:170, CHA:80,  desc:'Encyclopaedic knowledge. The deadliest weapon is information.' },
+  'Custom':      { STR:50,  DEX:50,  CON:50,  INT:50,  WIS:50,  CHA:50,  desc:'Build your own legend from scratch.' },
+};
 
 function save() {
   localStorage.setItem('aurora_worlds', JSON.stringify(state.worlds));
@@ -221,7 +261,7 @@ function buildSystemPrompt() {
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
     + '- Inventory: ' + c.inventory + '\n'
     + '- Location: ' + (c.current_location || w.name) + '\n'
-    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n\n'
+    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n'+ (c.stats ? '- Stats: STR '+c.stats.STR+'('+statGrade(c.stats.STR||50)+') DEX '+c.stats.DEX+'('+statGrade(c.stats.DEX||50)+') CON '+c.stats.CON+'('+statGrade(c.stats.CON||50)+') INT '+c.stats.INT+'('+statGrade(c.stats.INT||50)+') WIS '+c.stats.WIS+'('+statGrade(c.stats.WIS||50)+') CHA '+c.stats.CHA+'('+statGrade(c.stats.CHA||50)+')\n' : '')+ (c.mastery ? '- Mastery: STR-M '+statGrade(c.mastery.STR||10)+' DEX-M '+statGrade(c.mastery.DEX||10)+' CON-M '+statGrade(c.mastery.CON||10)+' INT-M '+statGrade(c.mastery.INT||10)+' WIS-M '+statGrade(c.mastery.WIS||10)+' CHA-M '+statGrade(c.mastery.CHA||10)+'\n' : '')+ '\n'
     + 'CAMPAIGN MEMORY (full history so far):\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
     + 'KNOWN NPCs:\n' + npcCtx + '\n\n'
     + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
@@ -450,8 +490,8 @@ var CLASS_ICONS = {Warrior:'⚔️',Mage:'🔮',Rogue:'🗡️',Ranger:'🏹',Pa
 var ALIGNMENTS = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
 var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Experience Mode'];
 var WORLD_ICONS = ['🌍','🌿','⚔️','📜','✨'];
-var CHAR_STEPS = ['Identity','Backstory','Abilities','Alignment'];
-var CHAR_ICONS = ['👤','📜','⚡','⚖️'];
+var CHAR_STEPS = ['Identity','Backstory','Stats','Abilities','Alignment'];
+var CHAR_ICONS = ['\U0001f464','\U0001f4dc','\U0001f4ca','\u26a1','\u2696\ufe0f'];
 
 var COMBAT_ACTIONS = [
   {label:'Slash',icon:'⚔️',type:'combat'},{label:'Dodge & Strike',icon:'🌀',type:'combat'},
@@ -836,53 +876,185 @@ function attachWorldDetailEvents() {
 }
 
 function renderCreateChar() {
-  var step=state.charStep,c=state.draftChar,content='';
+  var step=state.charStep, c=state.draftChar, body='';
+  var STAT_LIST = ['STR','DEX','CON','INT','WIS','CHA'];
+
   if(step===0){
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Who are you?</h2><p style="color:#9ca3af;margin-bottom:24px">Name and class.</p>'
-      +'<input id="char-name" type="text" placeholder="Character name..." value="'+esc(c.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:24px;outline:none" />'
-      +'<h3 style="font-weight:600;margin-bottom:12px">Class</h3>'+selectGridHtml(CLASSES,CLASS_ICONS,'class',c);
+    // ── Identity: name, class, level, preset ──────────────────────────────
+    var presetBtns = Object.keys(CLASS_PRESETS).map(function(cls){
+      var p=CLASS_PRESETS[cls], sel=c.class===cls;
+      return '<button class="preset-btn" data-cls="'+cls+'" style="padding:12px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.03)')+';text-align:left;cursor:pointer;transition:all 0.2s">'
+        +'<div style="font-weight:700;font-size:0.9rem;color:'+(sel?'#c084fc':'#e5e7eb')+'">'+cls+'</div>'
+        +'<div style="font-size:0.72rem;color:#9ca3af;margin-top:2px">'+p.desc+'</div>'
+        +'</button>';
+    }).join('');
+    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Who are you?</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:20px">Name, level and class.</p>'
+      +'<input id="char-name" type="text" placeholder="Character name..." value="'+esc(c.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:16px;outline:none" />'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:6px">Character Level</label>'
+      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">'
+      +'<input id="char-level" type="range" min="1" max="100" value="'+(c.level||1)+'" style="flex:1;accent-color:#9333ea" />'
+      +'<span id="level-display" style="font-weight:700;font-size:1.1rem;color:#c084fc;min-width:60px">Lv '+(c.level||1)+'</span>'
+      +'</div>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:10px">Choose Class (or start from a preset)</label>'
+      +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'+presetBtns+'</div>';
+
   } else if(step===1){
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2><p style="color:#9ca3af;margin-bottom:24px">Where did you come from?</p>'
-      +'<textarea id="char-backstory" placeholder="History, motivation, secrets..." rows="5" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.backstory)+'</textarea>'
+    // ── Backstory ──────────────────────────────────────────────────────────
+    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:24px">Where did you come from? What drives you?</p>'
+      +'<textarea id="char-backstory" rows="6" placeholder="History, motivation, secrets..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.backstory)+'</textarea>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Location</label>'
-      +'<input id="char-location" type="text" placeholder="Where do you begin?" value="'+esc(c.current_location)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;outline:none" />';
+      +'<input id="char-location" type="text" placeholder="Where does your story begin?" value="'+esc(c.current_location)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;outline:none" />';
+
   } else if(step===2){
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Abilities & Inventory</h2><p style="color:#9ca3af;margin-bottom:24px">What can you do and carry?</p>'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Special Abilities</label>'
-      +'<textarea id="char-abilities" placeholder="Combat skills, magic, stealth..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.abilities)+'</textarea>'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
-      +'<textarea id="char-inventory" placeholder="Items you carry..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
+    // ── Stats ──────────────────────────────────────────────────────────────
+    var stats = c.stats || {STR:50,DEX:50,CON:50,INT:50,WIS:50,CHA:50};
+    var mastery = c.mastery || {STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10};
+    var statRows = STAT_LIST.map(function(s){
+      var v=stats[s]||50, m=mastery[s]||10;
+      var g=statGrade(v), mg=statGrade(m), gc=statColor(g), mc=statColor(mg);
+      return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px;margin-bottom:10px">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        +'<span style="font-weight:700;font-size:0.9rem;letter-spacing:0.05em">'+s+'</span>'
+        +'<div style="display:flex;gap:16px;align-items:center">'
+        +'<span style="font-size:0.75rem;color:#9ca3af">Value <strong style="color:'+gc+'">'+v+' ('+g+')</strong></span>'
+        +'<span style="font-size:0.75rem;color:#9ca3af">Mastery <strong style="color:'+mc+'">'+m+' ('+mg+')</strong></span>'
+        +'</div></div>'
+        // Stat slider
+        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        +'<span style="font-size:0.7rem;color:#6b7280;width:48px">Stat</span>'
+        +'<input class="stat-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+v+'" style="flex:1;accent-color:#9333ea" />'
+        +'</div>'
+        // Mastery slider  
+        +'<div style="display:flex;align-items:center;gap:8px">'
+        +'<span style="font-size:0.7rem;color:#6b7280;width:48px">Mastery</span>'
+        +'<input class="mastery-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+m+'" style="flex:1;accent-color:#a855f7" />'
+        +'</div></div>';
+    }).join('');
+    var lv=c.level||1;
+    var mBase=masteryStart(lv);
+    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Stats & Mastery</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:6px">Grades: E (10-40) · D (41-70) · C (71-110) · B (111-150) · A (151-200)</p>'
+      +'<div style="background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.8rem;color:#c084fc">'
+      +'&#9432; Level '+lv+' character — mastery starts at <strong>'+mBase+'</strong> ('+statGrade(mBase)+'-grade). Mastery grows through gameplay.'
+      +'</div>'
+      +statRows;
+
   } else if(step===3){
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass.</p>'
+    // ── Abilities & Inventory ──────────────────────────────────────────────
+    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Abilities & Inventory</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:24px">What can you do and what do you carry?</p>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Special Abilities</label>'
+      +'<textarea id="char-abilities" rows="4" placeholder="Combat skills, spells, talents..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.abilities)+'</textarea>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
+      +'<textarea id="char-inventory" rows="3" placeholder="Items you carry..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
+
+  } else if(step===4){
+    // ── Alignment ─────────────────────────────────────────────────────────
+    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes the world&#39;s reaction to you.</p>'
       +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'
-      +ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>';
+      +ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')
+      +'</div>';
   }
+
+  var isLast = step === CHAR_STEPS.length - 1;
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
-    +'<button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'+stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div>'
-    +'<div style="max-width:36rem;margin:0 auto;padding:40px 24px">'+content
+    +'<button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">\u2190 Back</button>'
+    +stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div>'
+    +'<div style="max-width:40rem;margin:0 auto;padding:40px 24px">'+body
     +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
-    +(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
-    +(step<3?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
-       :'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter the World</button>')
+    +(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">\u2190 Back</button>':'<div></div>')
+    +(!isLast?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next \u2192</button>'
+             :'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">\u2728 Enter the World</button>')
     +'</div></div></div>';
 }
 function attachCreateCharEvents() {
-  var bb=document.getElementById('btn-back-char'),bp=document.getElementById('btn-char-prev'),bn=document.getElementById('btn-char-next'),bs=document.getElementById('btn-save-char');
+  var bb=document.getElementById('btn-back-char'),
+      bp=document.getElementById('btn-char-prev'),
+      bn=document.getElementById('btn-char-next'),
+      bs=document.getElementById('btn-save-char');
   if(bb) bb.addEventListener('click',function(){state.screen='worldDetail';render();});
   if(bp) bp.addEventListener('click',function(){collectCharStep();state.charStep--;render();});
-  if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();});
-  if(bs) bs.addEventListener('click',function(){collectCharStep();var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
-  document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar[b.dataset.field]=b.dataset.val;render();});});
-  document.querySelectorAll('.align-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});});
+  if(bn) bn.addEventListener('click',function(){
+    collectCharStep();
+    if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}
+    state.charStep++;render();
+  });
+  if(bs) bs.addEventListener('click',function(){
+    collectCharStep();
+    applyMasteryForLevel(state.draftChar);
+    var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});
+    state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();
+  });
+  // Preset class buttons
+  document.querySelectorAll('.preset-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      var cls=b.dataset.cls, p=CLASS_PRESETS[cls];
+      state.draftChar.class=cls;
+      if(p){ state.draftChar.stats=Object.assign({},p); delete state.draftChar.stats.desc; }
+      render();
+    });
+  });
+  // Alignment buttons
+  document.querySelectorAll('.align-btn').forEach(function(b){
+    b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});
+  });
+  // Level slider
+  var lvSlider=document.getElementById('char-level');
+  var lvDisplay=document.getElementById('level-display');
+  if(lvSlider){
+    lvSlider.addEventListener('input',function(){
+      state.draftChar.level=parseInt(lvSlider.value)||1;
+      if(lvDisplay) lvDisplay.textContent='Lv '+lvSlider.value;
+    });
+  }
+  // Stat sliders
+  document.querySelectorAll('.stat-slider').forEach(function(sl){
+    sl.addEventListener('input',function(){
+      if(!state.draftChar.stats) state.draftChar.stats={};
+      state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;
+      var row=sl.closest('div[style]');
+      if(row){
+        var g=statGrade(parseInt(sl.value));
+        var spans=row.querySelectorAll('strong');
+        if(spans[0]){ spans[0].textContent=sl.value+' ('+g+')'; spans[0].style.color=statColor(g); }
+      }
+    });
+  });
+  // Mastery sliders
+  document.querySelectorAll('.mastery-slider').forEach(function(sl){
+    sl.addEventListener('input',function(){
+      if(!state.draftChar.mastery) state.draftChar.mastery={};
+      state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;
+      var row=sl.closest('div[style]');
+      if(row){
+        var g=statGrade(parseInt(sl.value));
+        var spans=row.querySelectorAll('strong');
+        if(spans[1]){ spans[1].textContent=sl.value+' ('+g+')'; spans[1].style.color=statColor(g); }
+      }
+    });
+  });
 }
 function collectCharStep() {
-  var n=document.getElementById('char-name');if(n)state.draftChar.name=n.value;
-  var b=document.getElementById('char-backstory');if(b)state.draftChar.backstory=b.value;
-  var l=document.getElementById('char-location');if(l)state.draftChar.current_location=l.value;
-  var a=document.getElementById('char-abilities');if(a)state.draftChar.abilities=a.value;
-  var i=document.getElementById('char-inventory');if(i)state.draftChar.inventory=i.value;
+  var n=document.getElementById('char-name'); if(n) state.draftChar.name=n.value;
+  var b=document.getElementById('char-backstory'); if(b) state.draftChar.backstory=b.value;
+  var l=document.getElementById('char-location'); if(l) state.draftChar.current_location=l.value;
+  var a=document.getElementById('char-abilities'); if(a) state.draftChar.abilities=a.value;
+  var iv=document.getElementById('char-inventory'); if(iv) state.draftChar.inventory=iv.value;
+  var lv=document.getElementById('char-level'); if(lv) state.draftChar.level=parseInt(lv.value)||1;
+  document.querySelectorAll('.stat-slider').forEach(function(sl){
+    if(!state.draftChar.stats) state.draftChar.stats={};
+    state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;
+  });
+  document.querySelectorAll('.mastery-slider').forEach(function(sl){
+    if(!state.draftChar.mastery) state.draftChar.mastery={};
+    state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;
+  });
 }
+
 
 // ---- Campaign Journal Panel ----
 function renderJournal() {
