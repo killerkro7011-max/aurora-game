@@ -61,6 +61,9 @@ let state = {
   aiAssisting: false,
   aiSuggestion: null,
   aiSuggestionField: null,
+  aiTip: null,
+  consistencyCheck: null,
+  consistencyChecking: false,
 };
 
 function freshWorld() {
@@ -434,6 +437,96 @@ function scrollToBottom() {
 }
 
 // ---- AI World Assist ----
+async // ---- World Step AI Tips ----
+var WORLD_STEP_TIPS = [
+  'Give your world a name that feels lived-in — it sets the tone for everything.',
+  'Climate shapes culture. A frozen world breeds hard people. A tropical one breeds traders.',
+  'Factions with conflicting goals create natural story tension for your character.',
+  'Good lore has contradictions — myths people believe vs what actually happened.',
+  'Narrative Mode gives you the full cinematic AI experience right away.'
+];
+
+async function fetchStepTip() {
+  var w = state.draftWorld;
+  var step = state.worldStep;
+  if (!w.name) return; // nothing to work with yet
+  state.aiTip = null; render();
+  var ctx = 'World: "'+w.name+'", Setting: '+w.setting+', Climate: '+w.climate+', Magic: '+w.magic_level+', Tech: '+w.technology_level+', Danger: '+w.danger_level+(w.description?', Desc: '+w.description:'')+(w.lore?', Lore: '+w.lore:'')+(w.factions?', Factions: '+w.factions:'');
+  var stepHints = [
+    'Give a 1-sentence creative suggestion for naming or describing this world based on its setting.',
+    'Give a 1-sentence insight about how the climate and magic level interact in interesting ways.',
+    'Give a 1-sentence suggestion about what kind of faction conflict would make this world compelling.',
+    'Point out one potential lore inconsistency or suggest one surprising historical event that fits this world.',
+    'Give a 1-sentence tip about what makes Narrative Mode campaigns work best for this type of world.',
+  ];
+  try {
+    var tip = await callAI('You are a creative world-building advisor. Be specific, brief, and inspiring. Max 2 sentences.', 'World context: '+ctx+'\n\n'+stepHints[step], 120);
+    state.aiTip = tip;
+  } catch(e) { state.aiTip = null; }
+  render();
+}
+
+async function runConsistencyCheck() {
+  collectWorldStep();
+  var w = state.draftWorld;
+  state.consistencyChecking = true; state.consistencyCheck = null; render();
+  var worldInfo = JSON.stringify({
+    name: w.name, setting: w.setting, climate: w.climate,
+    magic_level: w.magic_level, technology_level: w.technology_level,
+    danger_level: w.danger_level, population_density: w.population_density,
+    lore: w.lore||'', factions: w.factions||'',
+    landmarks: w.landmarks||'', rules_of_nature: w.rules_of_nature||''
+  });
+  var prompt = 'You are a world-building expert reviewing a player-created game world for logical consistency.\n\nWorld data:\n'+worldInfo+'\n\nReturn a JSON object:\n{\n  "issues": [{"field":"...","problem":"...","suggestion":"..."}],\n  "strengths": ["one-sentence praise 1","one-sentence praise 2"],\n  "verdict": "Ready to play" | "Minor issues" | "Needs attention"\n}\nOnly flag real inconsistencies (e.g. no-magic world with magic factions, medieval tech but sci-fi lore, etc.). If everything is consistent, issues should be empty. Return ONLY valid JSON.';
+  try {
+    var result = await callAI('You are a strict but helpful world-building consistency checker.', prompt, 600);
+    var cleaned = result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    state.consistencyCheck = JSON.parse(cleaned);
+  } catch(e) {
+    state.consistencyCheck = { issues:[], strengths:['Could not parse check — your world looks good!'], verdict:'Ready to play' };
+  }
+  state.consistencyChecking = false; render();
+}
+
+function consistencyCheckHtml() {
+  if (state.consistencyChecking) return '<div style="margin-top:20px;padding:14px;border-radius:12px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);color:#c084fc;font-size:0.85rem" class="pulse">🔍 Vesper is checking your world for inconsistencies...</div>';
+  if (!state.consistencyCheck) return '';
+  var cc = state.consistencyCheck;
+  var verdictColor = cc.verdict==='Ready to play'?'#4ade80':cc.verdict==='Minor issues'?'#facc15':'#f87171';
+  var html = '<div style="margin-top:20px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);overflow:hidden">'
+    +'<div style="padding:12px 16px;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:space-between">'
+    +'<span style="font-weight:700;font-size:0.9rem">🔍 Consistency Check</span>'
+    +'<span style="font-size:0.8rem;font-weight:700;color:'+verdictColor+'">'+cc.verdict+'</span>'
+    +'</div>';
+  if (cc.issues && cc.issues.length > 0) {
+    html += '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.07)">'
+      +'<div style="font-size:0.8rem;font-weight:600;color:#f87171;margin-bottom:8px">⚠️ Issues Found</div>'
+      + cc.issues.map(function(i){ return '<div style="margin-bottom:8px;padding:10px;border-radius:8px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2)">'
+        +'<div style="font-size:0.8rem;color:#fca5a5;font-weight:600;margin-bottom:2px">'+i.field+'</div>'
+        +'<div style="font-size:0.78rem;color:#d1d5db;margin-bottom:4px">'+i.problem+'</div>'
+        +'<div style="font-size:0.75rem;color:#9ca3af">💡 '+i.suggestion+'</div>'
+        +'</div>'; }).join('')
+      +'</div>';
+  }
+  if (cc.strengths && cc.strengths.length > 0) {
+    html += '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.07)">'
+      +'<div style="font-size:0.8rem;font-weight:600;color:#4ade80;margin-bottom:8px">✅ What works well</div>'
+      + cc.strengths.map(function(s){ return '<div style="font-size:0.78rem;color:#d1d5db;margin-bottom:4px">• '+s+'</div>'; }).join('')
+      +'</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function stepTipHtml() {
+  if (!state.aiTip) return '';
+  return '<div style="margin-bottom:16px;padding:12px 14px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);display:flex;gap:10px;align-items:flex-start">'
+    +'<span style="font-size:1.1rem;flex-shrink:0">💡</span>'
+    +'<div style="font-size:0.8rem;color:#c084fc;line-height:1.5">'+state.aiTip+'</div>'
+    +'<button onclick="state.aiTip=null;render();" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1rem;flex-shrink:0;padding:0">×</button>'
+    +'</div>';
+}
+
 async function aiAssistWorld(type) {
   collectWorldStep();
   var w = state.draftWorld;
@@ -784,6 +877,7 @@ function renderCreateWorld() {
       +'<textarea id="world-rules" placeholder="How does magic work? Are there gods?" rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.rules_of_nature)+'</textarea>'
       +(state.aiSuggestionField==='rules_of_nature'?suggestionBox():'')+'</div>';
   } else if(step===4){
+    var ccBtn='<button id="btn-consistency-check" style="margin-bottom:16px;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;font-size:0.875rem;font-weight:600;cursor:pointer">🔍 Check World Consistency</button>';
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Experience Mode</h2><p style="color:#9ca3af;margin-bottom:24px">How will you live in this world?</p>'
       +'<div style="display:flex;flex-direction:column;gap:16px">'
       +[{id:'Narrative',icon:'📖',title:'Narrative Mode',desc:'AI-driven text adventure. Your words shape the story. Cinematic, immersive, unpredictable.',d:false},{id:'Visual',icon:'🎮',title:'Visual Mode',desc:'Coming soon — 2D world exploration.',d:true}].map(function(m){
@@ -793,14 +887,14 @@ function renderCreateWorld() {
           +'<h3 style="font-size:1.125rem;font-weight:700">'+m.title+(m.d?' <span style="font-size:0.75rem;color:#6b7280">Soon</span>':'')+'</h3>'
           +'<p style="font-size:0.875rem;color:#9ca3af;margin-top:4px">'+m.desc+'</p>'
           +'</button>';
-      }).join('')+'</div>';
+      }).join('')+'</div>'+ccBtn+consistencyCheckHtml();
   }
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
     +'<button id="btn-back-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'
     +stepBarHtml(WORLD_STEPS,WORLD_ICONS,step)
     +'</div>'
-    +'<div style="max-width:42rem;margin:0 auto;padding:40px 24px">'+content
+    +'<div style="max-width:42rem;margin:0 auto;padding:40px 24px">'+stepTipHtml()+content
     +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
     +(step>0?'<button id="btn-prev-step" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
     +(step<4?'<button id="btn-next-step" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
@@ -810,13 +904,20 @@ function renderCreateWorld() {
 function attachCreateWorldEvents() {
   var bback=document.getElementById('btn-back-worlds'),bprev=document.getElementById('btn-prev-step'),bnext=document.getElementById('btn-next-step'),bsave=document.getElementById('btn-save-world');
   if(bback) bback.addEventListener('click',function(){state.screen='worlds';render();});
-  if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;render();});
-  if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;render();});
+  if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
+  if(bnext) bnext.addEventListener('click',function(){
+    collectWorldStep();
+    if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}
+    state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();
+    fetchStepTip();
+  });
   if(bsave) bsave.addEventListener('click',function(){collectWorldStep();var w=Object.assign({},state.draftWorld,{id:Date.now().toString(),status:'Active',created_date:new Date().toISOString()});state.worlds.push(w);save();state.currentWorld=w;state.screen='worldDetail';render();});
   document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld[b.dataset.field]=b.dataset.val;render();});});
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
   document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
   document.querySelectorAll('.ai-assist-btn').forEach(function(b){b.addEventListener('click',function(){collectWorldStep();aiAssistWorld(b.dataset.assistType);});});
+  var bcc=document.getElementById('btn-consistency-check');
+  if(bcc) bcc.addEventListener('click',function(){ runConsistencyCheck(); });
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
   if(bd) bd.addEventListener('click',function(){state.aiSuggestion=null;state.aiSuggestionField=null;render();});
