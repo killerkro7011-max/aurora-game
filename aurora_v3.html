@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Aurora — God Sandbox Game</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #030712; color: white; font-family: system-ui, sans-serif; }
+  textarea { resize: none; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 4px; }
+  input[type=range] { accent-color: #9333ea; }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+  @keyframes pulse2 { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .dot1{animation:bounce 1s infinite 0ms}
+  .dot2{animation:bounce 1s infinite 150ms}
+  .dot3{animation:bounce 1s infinite 300ms}
+  .pulse{animation:pulse2 1.5s infinite}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// ============================================================
+// AURORA v3 — Rolling Campaign Memory + Journal + NPC Registry
+// ============================================================
+
+const KEY_STORE = 'aurora_openai_key';
+
+let state = {
+  screen: 'home',
+  apiKey: localStorage.getItem(KEY_STORE) || '',
+  worlds: JSON.parse(localStorage.getItem('aurora_worlds') || '[]'),
+  characters: JSON.parse(localStorage.getItem('aurora_chars') || '[]'),
+  currentWorld: null,
+  currentChar: null,
+  worldStep: 0, charStep: 0,
+  draftWorld: {}, draftChar: {},
+  // Play state
+  messages: [],
+  recentMemory: [],        // last ~10 raw exchanges
+  campaignSummary: '',     // rolling AI-compressed summary of whole campaign
+  npcs: [],                // [{name, attitude, notes}]
+  quests: [],              // [{title, status, desc}]
+  keyEvents: [],           // [{turn, text}]
+  loading: false,
+  inCombat: false, enemy: null,
+  charHP: 100,
+  actionCount: 0,
+  turnCount: 0,
+  chapters: [],
+  showJournal: false,
+  showStats: false,
+  saveToast: false,
+  summarizing: false,
+  // World creation AI assist
+  aiAssisting: false,
+  aiSuggestion: null,
+  aiSuggestionField: null,
+};
+
+function freshWorld() {
+  return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative' };
+}
+function freshChar(worldId, worldName) {
+  return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'' };
+}
+
+function save() {
+  localStorage.setItem('aurora_worlds', JSON.stringify(state.worlds));
+  localStorage.setItem('aurora_chars', JSON.stringify(state.characters));
+  if (state.apiKey) localStorage.setItem(KEY_STORE, state.apiKey);
+}
+
+// ---- Dice ----
+function rollD20() { return Math.floor(Math.random() * 20) + 1; }
+function combatOutcome(p, e) {
+  if (p===20) return 'critical_hit';
+  if (p===1) return 'critical_fail';
+  var d = p - e;
+  if (d>=8) return 'strong_hit';
+  if (d>=3) return 'hit';
+  if (d>=-2) return 'graze';
+  if (d>=-7) return 'miss';
+  return 'bad_miss';
+}
+function skillOutcome(r) {
+  if (r===20) return 'critical_success';
+  if (r>=15) return 'success';
+  if (r>=10) return 'partial';
+  if (r>=5) return 'fail';
+  return 'critical_fail';
+}
+
+// ---- AI Core ----
+async function callAI(system, user, maxTokens) {
+  maxTokens = maxTokens || 600;
+  var res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.apiKey },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role:'system', content:system },{ role:'user', content:user }],
+      max_tokens: maxTokens,
+      temperature: 0.85,
+    })
+  });
+  if (!res.ok) { var e = await res.json(); throw new Error(e.error && e.error.message || 'API error'); }
+  var data = await res.json();
+  return data.choices[0].message.content.trim();
+}
+
+// ---- Rolling Campaign Memory ----
+// Every 10 turns: compress recentMemory + old summary into new summary
+// Also extract new NPCs, quests, key events from the AI response
+
+async function runRollingSummary() {
+  if (state.recentMemory.length < 10) return;
+  state.summarizing = true;
+  render();
+
+  var recentText = state.recentMemory.map(function(m) {
+    return (m.role === 'player' ? 'PLAYER: ' : 'NARRATOR: ') + m.text;
+  }).join('\n\n');
+
+  var prompt = 'You are a campaign scribe for an RPG. Update the campaign record based on recent events.\n\n'
+    + 'PREVIOUS SUMMARY:\n' + (state.campaignSummary || '(Campaign just began.)') + '\n\n'
+    + 'RECENT EVENTS:\n' + recentText + '\n\n'
+    + 'Return a JSON object with these exact keys:\n'
+    + '{\n'
+    + '  "summary": "Updated 3-5 sentence campaign summary covering all major events so far",\n'
+    + '  "new_npcs": [{"name":"...","attitude":"friendly|neutral|hostile","notes":"one sentence about them"}],\n'
+    + '  "new_quests": [{"title":"...","status":"active|completed|failed","desc":"one sentence"}],\n'
+    + '  "key_event": "One sentence describing the most important thing that just happened (or null)"\n'
+    + '}\n'
+    + 'Only include NPCs and quests that were actually mentioned in the recent events. Return ONLY valid JSON.';
+
+  try {
+    var result = await callAI('You are a precise campaign scribe. Return only valid JSON.', prompt, 500);
+    var cleaned = result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    var json = JSON.parse(cleaned);
+
+    if (json.summary) state.campaignSummary = json.summary;
+
+    if (json.new_npcs && json.new_npcs.length > 0) {
+      json.new_npcs.forEach(function(npc) {
+        var existing = state.npcs.find(function(n) { return n.name.toLowerCase() === npc.name.toLowerCase(); });
+        if (existing) {
+          existing.attitude = npc.attitude || existing.attitude;
+          existing.notes = npc.notes || existing.notes;
+        } else {
+          state.npcs.push({ name: npc.name, attitude: npc.attitude || 'neutral', notes: npc.notes || '' });
+        }
+      });
+    }
+
+    if (json.new_quests && json.new_quests.length > 0) {
+      json.new_quests.forEach(function(q) {
+        var existing = state.quests.find(function(x) { return x.title.toLowerCase() === q.title.toLowerCase(); });
+        if (existing) {
+          existing.status = q.status || existing.status;
+        } else {
+          state.quests.push({ title: q.title, status: q.status || 'active', desc: q.desc || '' });
+        }
+      });
+    }
+
+    if (json.key_event && json.key_event !== 'null') {
+      state.keyEvents.push({ turn: state.turnCount, text: json.key_event });
+      if (state.keyEvents.length > 20) state.keyEvents = state.keyEvents.slice(-20);
+    }
+
+    // Clear recent memory — it's now in the summary
+    state.recentMemory = [];
+
+  } catch(e) {
+    // If parsing fails, just do a simple text summary
+    try {
+      var fallback = await callAI('You are a campaign scribe.', 'Summarize these RPG events in 3-4 sentences:\n\n' + recentText, 200);
+      state.campaignSummary = (state.campaignSummary ? state.campaignSummary + ' ' : '') + fallback;
+      state.recentMemory = [];
+    } catch(e2) {}
+  }
+
+  state.summarizing = false;
+  render();
+}
+
+function buildSystemPrompt() {
+  var w = state.currentWorld;
+  var c = state.currentChar;
+
+  // Build NPC context
+  var npcCtx = state.npcs.length > 0
+    ? state.npcs.map(function(n) { return '- ' + n.name + ' (' + n.attitude + '): ' + n.notes; }).join('\n')
+    : 'None yet.';
+
+  // Build quest context
+  var questCtx = state.quests.filter(function(q) { return q.status === 'active'; }).map(function(q) { return '- ' + q.title + ': ' + q.desc; }).join('\n') || 'None active.';
+
+  // Recent raw exchanges (last 6)
+  var recentCtx = state.recentMemory.slice(-6).map(function(m) {
+    return (m.role === 'player' ? 'Player: ' : 'Narrator: ') + m.text;
+  }).join('\n\n');
+
+  return 'You are the Narrator of "' + w.name + '" — a cinematic, immersive AI-driven RPG world.\n\n'
+    + 'WORLD:\n'
+    + '- Setting: ' + w.setting + ' | Climate: ' + w.climate + ' | Magic: ' + w.magic_level + ' | Tech: ' + w.technology_level + '\n'
+    + '- Danger: ' + w.danger_level + ' | Population: ' + w.population_density + '\n'
+    + '- Lore: ' + (w.lore || 'A world rich with untold history.') + '\n'
+    + '- Factions: ' + (w.factions || 'Various groups vie for power.') + '\n'
+    + '- Landmarks: ' + (w.landmarks || 'Ancient ruins and forgotten places.') + '\n'
+    + '- Nature Rules: ' + (w.rules_of_nature || 'Standard physics with hints of the arcane.') + '\n\n'
+    + 'CHARACTER:\n'
+    + '- Name: ' + c.name + ' | Class: ' + c.class + ' | Alignment: ' + c.alignment + '\n'
+    + '- Backstory: ' + (c.backstory || 'A mysterious past.') + '\n'
+    + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
+    + '- Inventory: ' + c.inventory + '\n'
+    + '- Location: ' + (c.current_location || w.name) + '\n'
+    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n\n'
+    + 'CAMPAIGN MEMORY (full history so far):\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
+    + 'KNOWN NPCs:\n' + npcCtx + '\n\n'
+    + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
+    + 'RECENT EXCHANGES:\n' + (recentCtx || '(None yet.)') + '\n\n'
+    + 'NARRATOR RULES:\n'
+    + '- Present tense, second person ("You step forward...").\n'
+    + '- 2-4 punchy paragraphs. Make every word count.\n'
+    + '- End with tension or an implicit decision point.\n'
+    + '- The world REMEMBERS. NPCs react to your reputation and past actions.\n'
+    + '- Adapt tone to danger level.\n\n'
+    + 'COMBAT RULES:\n'
+    + '- When combat starts, tag: [COMBAT_START:EnemyName:HP]\n'
+    + '- Write combat as real-time cinematic action — never turn-based language.\n'
+    + '- Tag damage: [PDMG:X] player deals, [EDMG:X] enemy deals\n'
+    + '- End combat: [COMBAT_END:victory] or [COMBAT_END:defeat] or [COMBAT_END:fled]';
+}
+
+function parseResponse(text) {
+  var clean = text;
+  var r = { cleanText: text, pdmg: 0, edmg: 0, combatStart: null, combatEnd: null };
+  var s = clean.match(/\[COMBAT_START:([^:]+):(\d+)\]/);
+  if (s) { r.combatStart = { name: s[1], hp: parseInt(s[2]) }; clean = clean.replace(s[0],'').trim(); }
+  var pd = clean.match(/\[PDMG:(\d+)\]/);
+  if (pd) { r.pdmg = parseInt(pd[1]); clean = clean.replace(pd[0],'').trim(); }
+  var ed = clean.match(/\[EDMG:(\d+)\]/);
+  if (ed) { r.edmg = parseInt(ed[1]); clean = clean.replace(ed[0],'').trim(); }
+  var en = clean.match(/\[COMBAT_END:(victory|defeat|fled)\]/);
+  if (en) { r.combatEnd = en[1]; clean = clean.replace(en[0],'').trim(); }
+  r.cleanText = clean;
+  return r;
+}
+
+function addToMemory(role, text) {
+  state.recentMemory.push({ role: role, text: text });
+  // Keep recentMemory from growing unbounded between summaries
+  if (state.recentMemory.length > 20) state.recentMemory = state.recentMemory.slice(-20);
+}
+
+async function startGame() {
+  state.messages = []; state.recentMemory = [];
+  state.campaignSummary = ''; state.npcs = []; state.quests = []; state.keyEvents = [];
+  state.charHP = state.currentChar.health || 100;
+  state.inCombat = false; state.enemy = null;
+  state.actionCount = 0; state.turnCount = 0; state.chapters = [];
+  state.showJournal = false; state.showStats = false;
+  state.loading = true;
+  render();
+  try {
+    var openingPrompt = 'Begin the story. Opening scene for ' + state.currentChar.name
+      + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') arriving in ' + state.currentWorld.name + '.'
+      + ' Setting: ' + state.currentWorld.setting + ', Climate: ' + state.currentWorld.climate + ', Danger: ' + state.currentWorld.danger_level + '.'
+      + (state.currentWorld.lore ? ' Lore: ' + state.currentWorld.lore.slice(0,200) : '')
+      + (state.currentChar.backstory ? ' Character backstory: ' + state.currentChar.backstory.slice(0,150) : '')
+      + ' Make it cinematic and immediate. Hook them in the first sentence. 2-3 paragraphs.';
+    var text = await callAI('You are a cinematic RPG narrator. Be vivid, immediate, atmospheric.', openingPrompt, 500);
+    state.messages.push({ role:'narrator', text:text, id: Date.now() });
+    addToMemory('narrator', text);
+    // Seed the first key event
+    state.keyEvents.push({ turn: 0, text: state.currentChar.name + ' entered ' + state.currentWorld.name + '.' });
+  } catch(e) {
+    var fallback = 'You open your eyes. ' + state.currentWorld.name + ' surrounds you — ' + state.currentWorld.climate.toLowerCase() + ' air heavy with possibility. As a ' + state.currentChar.class + ', this is where your story begins.';
+    state.messages.push({ role:'narrator', text: fallback, id: Date.now() });
+    addToMemory('narrator', fallback);
+  }
+  state.loading = false;
+  render();
+  scrollToBottom();
+}
+
+async function sendMessage(text) {
+  if (!text.trim() || state.loading) return;
+  state.input = '';
+  state.messages.push({ role:'player', text: text.trim(), id: Date.now() });
+  addToMemory('player', text.trim());
+  state.loading = true;
+  render();
+
+  var skillWords = ['sneak','climb','jump','persuade','intimidate','search','cast','steal','hide','pick','break','run','dodge','investigate','deceive','charm'];
+  var needsRoll = skillWords.some(function(w) { return text.toLowerCase().indexOf(w) !== -1; });
+  var rollInfo = '';
+  if (needsRoll) {
+    var roll = rollD20();
+    var outcome = skillOutcome(roll);
+    state.messages.push({ role:'roll', playerRoll: roll, enemyRoll: null, result: outcome, id: Date.now()+1 });
+    rollInfo = '\nSKILL CHECK: ' + roll + '/20 — ' + outcome + '. Let this organically shape the outcome.';
+  }
+
+  try {
+    var res = await callAI(buildSystemPrompt(), 'Player: ' + text.trim() + rollInfo);
+    var parsed = parseResponse(res);
+    if (parsed.combatStart) { state.inCombat = true; state.enemy = { name: parsed.combatStart.name, hp: parsed.combatStart.hp, maxHp: parsed.combatStart.hp }; }
+    if (parsed.edmg) { state.charHP = Math.max(0, state.charHP - parsed.edmg); }
+    if (parsed.pdmg && state.enemy) { state.enemy.hp = Math.max(0, state.enemy.hp - parsed.pdmg); }
+    if (parsed.combatEnd) { state.inCombat = false; if (parsed.combatEnd !== 'defeat') state.enemy = null; }
+    state.messages.push({ role:'narrator', text: parsed.cleanText, id: Date.now()+2 });
+    addToMemory('narrator', parsed.cleanText);
+    state.turnCount++;
+    state.actionCount++;
+
+    // Auto-save chapter every 8 actions
+    if (state.actionCount % 8 === 0) saveChapter(parsed.cleanText);
+
+    // Run rolling summary every 10 turns
+    if (state.turnCount % 10 === 0 && state.recentMemory.length >= 8) {
+      await runRollingSummary();
+    }
+
+  } catch(e) {
+    state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
+  }
+  state.loading = false;
+  render();
+  scrollToBottom();
+}
+
+async function doCombatAction(label, type, icon) {
+  if (state.loading) return;
+  if (type === 'flee') {
+    var roll = rollD20();
+    var fled = roll >= 12;
+    state.messages.push({ role:'roll', playerRoll: roll, enemyRoll: 0, result: fled?'hit':'miss', id: Date.now() });
+    state.messages.push({ role:'player', text: 'I try to retreat!', id: Date.now()+1 });
+    state.loading = true; render();
+    try {
+      var res = await callAI(buildSystemPrompt(), 'Player attempts to flee. Roll: ' + roll + '/20. ' + (fled ? 'They escape! [COMBAT_END:fled]' : 'They fail to escape. The enemy presses the advantage.') + ' Write as a cinematic moment.');
+      var parsed = parseResponse(res);
+      if (fled || parsed.combatEnd === 'fled') { state.inCombat = false; state.enemy = null; }
+      state.messages.push({ role:'narrator', text: parsed.cleanText, id: Date.now()+2 });
+      addToMemory('narrator', parsed.cleanText);
+    } catch(e) {}
+    state.loading = false; render(); scrollToBottom();
+    return;
+  }
+  var pRoll = rollD20(), eRoll = rollD20();
+  var outcome = combatOutcome(pRoll, eRoll);
+  state.messages.push({ role:'roll', playerRoll: pRoll, enemyRoll: eRoll, result: outcome, id: Date.now() });
+  state.messages.push({ role:'player', text: icon + ' ' + label, id: Date.now()+1 });
+  state.loading = true; render();
+  try {
+    var prompt = 'COMBAT: Player chose "' + label + '" against ' + (state.enemy ? state.enemy.name : 'enemy') + '.\n'
+      + 'PLAYER ROLL: ' + pRoll + '/20 | ENEMY ROLL: ' + eRoll + '/20 | OUTCOME: ' + outcome + '\n'
+      + 'Player HP: ' + state.charHP + '/100 | Enemy HP: ' + (state.enemy ? state.enemy.hp + '/' + state.enemy.maxHp : '?') + '\n'
+      + 'Write as real-time cinematic action. Tag [PDMG:X] [EDMG:X]. If enemy defeated: [COMBAT_END:victory].';
+    var res2 = await callAI(buildSystemPrompt(), prompt);
+    var parsed2 = parseResponse(res2);
+    if (parsed2.pdmg && state.enemy) { state.enemy.hp = Math.max(0, state.enemy.hp - parsed2.pdmg); }
+    if (parsed2.edmg) { state.charHP = Math.max(0, state.charHP - parsed2.edmg); }
+    if (parsed2.combatEnd === 'victory') { state.inCombat = false; state.enemy = null; state.currentChar.experience += 50; }
+    else if (parsed2.combatEnd === 'defeat') {
+      state.inCombat = false;
+      state.messages.push({ role:'system', text: 'You have fallen. Your story ends here... for now.', id: Date.now()+3 });
+    }
+    state.messages.push({ role:'narrator', text: parsed2.cleanText, id: Date.now()+2 });
+    addToMemory('narrator', parsed2.cleanText);
+    state.turnCount++;
+    if (state.turnCount % 10 === 0 && state.recentMemory.length >= 8) await runRollingSummary();
+  } catch(e) { state.messages.push({ role:'narrator', text: 'The battle rages on...', id: Date.now()+2 }); }
+  state.loading = false; render(); scrollToBottom();
+}
+
+function saveChapter(lastText) {
+  var n = state.chapters.length + 1;
+  state.chapters.push({ id: Date.now(), num: n, title: 'Chapter ' + n, timestamp: new Date().toLocaleString(), hp: state.charHP, location: state.currentChar.current_location || state.currentWorld.name, preview: lastText.slice(0,120) + '...' });
+  state.saveToast = true; render();
+  setTimeout(function() { state.saveToast = false; render(); }, 2500);
+}
+
+function scrollToBottom() {
+  setTimeout(function() { var el = document.getElementById('messages-end'); if (el) el.scrollIntoView({ behavior:'smooth' }); }, 100);
+}
+
+// ---- AI World Assist ----
+async function aiAssistWorld(type) {
+  collectWorldStep();
+  var w = state.draftWorld;
+  state.aiAssisting = true; state.aiSuggestion = null; state.aiSuggestionField = type;
+  render();
+  var ctx = 'World: "' + (w.name||'Unnamed') + '", Setting: ' + w.setting + ', Climate: ' + w.climate + ', Magic: ' + w.magic_level + ', Tech: ' + w.technology_level + ', Danger: ' + w.danger_level + (w.description?', Desc: '+w.description:'') + (w.lore?', Lore: '+w.lore:'') + (w.factions?', Factions: '+w.factions:'');
+  var prompts = {
+    description: 'Based on: ' + ctx + '\n\nWrite a vivid 2-3 sentence world description. Specific and atmospheric. Return ONLY the text.',
+    lore: 'Based on: ' + ctx + '\n\nWrite rich world lore — origins, history, a major past event, current state. 3-4 sentences. Return ONLY the text.',
+    factions: 'Based on: ' + ctx + '\n\nCreate 3 factions with names and one-sentence descriptions. Return ONLY the text.',
+    landmarks: 'Based on: ' + ctx + '\n\nCreate 3-4 memorable landmarks tied to this world. Each with name and brief description. Return ONLY the text.',
+    rules_of_nature: 'Based on: ' + ctx + '\n\nDescribe unique rules of nature — magic system, unusual physics, gods, what makes this world distinct. 2-3 sentences. Return ONLY the text.',
+    full: 'Based on: ' + ctx + '\n\nFill in ALL missing details. Return JSON: {"description":"...","lore":"...","factions":"...","landmarks":"...","rules_of_nature":"..."}. Return ONLY valid JSON.',
+  };
+  try {
+    var result = await callAI('You are a creative world-builder. Be vivid and specific.', prompts[type]||prompts.description, 400);
+    if (type === 'full') {
+      try {
+        var json = JSON.parse(result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim());
+        if (json.description && !w.description) state.draftWorld.description = json.description;
+        if (json.lore && !w.lore) state.draftWorld.lore = json.lore;
+        if (json.factions && !w.factions) state.draftWorld.factions = json.factions;
+        if (json.landmarks && !w.landmarks) state.draftWorld.landmarks = json.landmarks;
+        if (json.rules_of_nature && !w.rules_of_nature) state.draftWorld.rules_of_nature = json.rules_of_nature;
+        state.aiSuggestion = 'All fields filled in! Review and edit anything you like.';
+      } catch(e) { state.aiSuggestion = result; }
+    } else { state.aiSuggestion = result; }
+  } catch(e) { state.aiSuggestion = 'Could not generate. Check your API key.'; }
+  state.aiAssisting = false; render();
+}
+
+function applyAiSuggestion() {
+  if (state.aiSuggestionField && state.aiSuggestion && state.aiSuggestionField !== 'full') {
+    state.draftWorld[state.aiSuggestionField] = state.aiSuggestion;
+  }
+  state.aiSuggestion = null; state.aiSuggestionField = null; render();
+}
+
+// ---- Constants ----
+var SETTINGS = ['Fantasy','Sci-Fi','Modern','Post-Apocalyptic','Ancient','Custom'];
+var SETTING_ICONS = {Fantasy:'🧙','Sci-Fi':'🚀',Modern:'🏙️','Post-Apocalyptic':'☢️',Ancient:'🏛️',Custom:'🎨'};
+var CLIMATES = ['Tropical','Arctic','Desert','Temperate','Oceanic','Mixed'];
+var CLIMATE_ICONS = {Tropical:'🌴',Arctic:'❄️',Desert:'🏜️',Temperate:'🍃',Oceanic:'🌊',Mixed:'🌦️'};
+var MAGIC_LEVELS = ['None','Low','Medium','High','Unlimited'];
+var MAGIC_ICONS = {None:'🚫',Low:'✨',Medium:'⚡',High:'🔮',Unlimited:'🌌'};
+var TECH_LEVELS = ['Primitive','Medieval','Industrial','Modern','Futuristic'];
+var TECH_ICONS = {Primitive:'🪨',Medieval:'⚔️',Industrial:'⚙️',Modern:'💻',Futuristic:'🤖'};
+var DANGER_LEVELS = ['Peaceful','Low','Medium','High','Extreme'];
+var DANGER_ICONS = {Peaceful:'☮️',Low:'🛡️',Medium:'⚠️',High:'💀',Extreme:'☠️'};
+var POP_DENSITIES = ['Empty','Sparse','Moderate','Dense','Overcrowded'];
+var POP_ICONS = {Empty:'🏜️',Sparse:'🏕️',Moderate:'🏘️',Dense:'🏙️',Overcrowded:'🌆'};
+var CLASSES = ['Warrior','Mage','Rogue','Ranger','Paladin','Necromancer','Bard','Druid','Monk','Custom'];
+var CLASS_ICONS = {Warrior:'⚔️',Mage:'🔮',Rogue:'🗡️',Ranger:'🏹',Paladin:'🛡️',Necromancer:'💀',Bard:'🎵',Druid:'🌿',Monk:'🥋',Custom:'✨'};
+var ALIGNMENTS = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
+var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Experience Mode'];
+var WORLD_ICONS = ['🌍','🌿','⚔️','📜','✨'];
+var CHAR_STEPS = ['Identity','Backstory','Abilities','Alignment'];
+var CHAR_ICONS = ['👤','📜','⚡','⚖️'];
+
+var COMBAT_ACTIONS = [
+  {label:'Slash',icon:'⚔️',type:'combat'},{label:'Dodge & Strike',icon:'🌀',type:'combat'},
+  {label:'Heavy Blow',icon:'💥',type:'combat'},{label:'Quick Jab',icon:'👊',type:'combat'},
+  {label:'Use Ability',icon:'✨',type:'ability'},{label:'Retreat',icon:'🏃',type:'flee'}
+];
+var EXPLORE_ACTIONS = [
+  {label:'Look around',icon:'👁️'},{label:'Check inventory',icon:'🎒'},
+  {label:'Talk to someone',icon:'💬'},{label:'Search the area',icon:'🔍'},
+  {label:'Rest',icon:'🌙'},{label:'Sneak ahead',icon:'🐾'}
+];
+
+// ---- UI Helpers ----
+function esc(s) { return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''; }
+
+function hpBar(cur,max,label) {
+  var pct = Math.max(0,Math.min(100,(cur/max)*100));
+  var c = pct>50?'#22c55e':pct>25?'#eab308':'#ef4444';
+  return '<div style="width:100%">'+(label?'<div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#9ca3af;margin-bottom:3px"><span>'+esc(label)+'</span><span>'+cur+'/'+max+'</span></div>':'')+'<div style="height:6px;background:rgba(255,255,255,0.1);border-radius:9999px;overflow:hidden"><div style="height:100%;background:'+c+';border-radius:9999px;width:'+pct+'%;transition:width 0.4s"></div></div></div>';
+}
+
+function rollLabel(r) {
+  return {critical_hit:'CRITICAL HIT',critical_fail:'CRITICAL FAIL',strong_hit:'STRONG HIT',hit:'HIT',graze:'GRAZE',miss:'MISS',bad_miss:'BADLY MISSED',critical_success:'CRITICAL SUCCESS',success:'SUCCESS',partial:'PARTIAL',fail:'FAIL'}[r]||r;
+}
+function rollColor(r) {
+  if (['critical_hit','critical_success','strong_hit','success'].indexOf(r)!==-1) return '#4ade80';
+  if (r==='hit') return '#60a5fa';
+  if (['graze','partial'].indexOf(r)!==-1) return '#fb923c';
+  return '#f87171';
+}
+
+function attitudeColor(a) {
+  return a==='friendly'?'#4ade80':a==='hostile'?'#f87171':'#facc15';
+}
+
+function stepBarHtml(steps, icons, current) {
+  var h = '<div style="display:flex;align-items:center;gap:6px;flex:1">';
+  steps.forEach(function(s,i) {
+    if (i>0) h+='<div style="flex:1;height:1px;background:rgba(255,255,255,0.1)"></div>';
+    h+='<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;border:2px solid '+(i<current?'#9333ea':i===current?'#a855f7':'rgba(255,255,255,0.2)')+';background:'+(i<current?'#9333ea':i===current?'rgba(168,85,247,0.2)':'rgba(255,255,255,0.05)')+'">'+( i<current?'✓':icons[i])+'</div></div>';
+  });
+  h+='</div>';
+  return h;
+}
+
+function selectGridHtml(opts, icons, field, obj) {
+  var h = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px">';
+  opts.forEach(function(opt) {
+    var sel = obj[field]===opt;
+    h+='<button class="sel-btn" data-field="'+field+'" data-val="'+opt+'" style="display:flex;flex-direction:column;align-items:center;padding:14px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';cursor:pointer;font-size:1.5rem;transition:all 0.15s"><span>'+icons[opt]+'</span><span style="font-size:0.8rem;font-weight:500;margin-top:4px">'+opt+'</span></button>';
+  });
+  h+='</div>';
+  return h;
+}
+
+function sliderHtml(label, opts, icons, field, obj) {
+  var idx = Math.max(0, opts.indexOf(obj[field]));
+  return '<div style="margin-top:16px">'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:6px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">'+label+'</label><span style="color:#c084fc;font-weight:600">'+icons[obj[field]]+' '+obj[field]+'</span></div>'
+    +'<input type="range" class="world-slider" style="width:100%;accent-color:#9333ea" min="0" max="'+(opts.length-1)+'" value="'+idx+'" data-opts="'+opts.join('|')+'" data-field="'+field+'" />'
+    +'<div style="display:flex;justify-content:space-between;margin-top:3px">'+opts.map(function(o){return '<span style="font-size:0.65rem;color:#6b7280">'+o+'</span>';}).join('')+'</div>'
+    +'</div>';
+}
+
+function aiAssistBtn(type, label) {
+  var busy = state.aiAssisting && state.aiSuggestionField===type;
+  return '<button class="ai-assist-btn" data-assist-type="'+type+'" '+(state.aiAssisting?'disabled':'')+' style="font-size:0.7rem;padding:4px 10px;border-radius:9999px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;cursor:pointer;opacity:'+(busy?'0.5':'1')+'">'+(busy?'✨ ...'  :'✨ '+label)+'</button>';
+}
+
+function suggestionBox() {
+  if (!state.aiSuggestion && !state.aiAssisting) return '';
+  if (state.aiAssisting && !state.aiSuggestion) return '<div style="margin-top:12px;padding:12px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.1);color:#c084fc;font-size:0.875rem" class="pulse">✨ Aurora AI is crafting something...</div>';
+  return '<div style="margin-top:12px;padding:14px;border-radius:10px;border:1px solid rgba(147,51,234,0.5);background:rgba(88,28,135,0.2)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-size:0.7rem;font-weight:700;color:#c084fc;text-transform:uppercase;letter-spacing:0.05em">✨ AI Suggestion</span><button id="btn-dismiss-suggest" style="font-size:0.7rem;color:#6b7280;background:none;border:none;cursor:pointer">✕</button></div>'
+    +'<p style="font-size:0.875rem;color:#e5e7eb;line-height:1.6;white-space:pre-line;margin-bottom:10px">'+esc(state.aiSuggestion)+'</p>'
+    +(state.aiSuggestionField!=='full'?'<button id="btn-apply-suggest" style="font-size:0.75rem;background:#7e22ce;color:white;border:none;padding:5px 14px;border-radius:6px;font-weight:600;cursor:pointer">Use this →</button>':'')
+    +'</div>';
+}
+
+// ---- RENDER ----
+function render() {
+  var root = document.getElementById('root');
+  if (!root) return;
+  if (!state.apiKey) { root.innerHTML = renderKeyScreen(); attachKeyEvents(); return; }
+  if (state.screen==='home') { root.innerHTML = renderHome(); attachHomeEvents(); return; }
+  if (state.screen==='worlds') { root.innerHTML = renderWorlds(); attachWorldsEvents(); return; }
+  if (state.screen==='createWorld') { root.innerHTML = renderCreateWorld(); attachCreateWorldEvents(); return; }
+  if (state.screen==='worldDetail') { root.innerHTML = renderWorldDetail(); attachWorldDetailEvents(); return; }
+  if (state.screen==='createChar') { root.innerHTML = renderCreateChar(); attachCreateCharEvents(); return; }
+  if (state.screen==='play') { root.innerHTML = renderPlay(); attachPlayEvents(); return; }
+}
+
+function renderKeyScreen() {
+  return '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(135deg,#0a0a1a,#1a0a2e)">'
+    +'<div style="max-width:28rem;width:100%;text-align:center">'
+    +'<div style="font-size:4rem;margin-bottom:24px">🔑</div>'
+    +'<h1 style="font-size:1.875rem;font-weight:800;margin-bottom:8px">Aurora needs an AI key</h1>'
+    +'<p style="color:#9ca3af;margin-bottom:8px">This game uses OpenAI to power the narrator.</p>'
+    +'<p style="color:#6b7280;font-size:0.875rem;margin-bottom:32px">Your key is saved locally in your browser only.</p>'
+    +'<input id="key-input" type="password" placeholder="sk-..." value="'+esc(state.apiKey)+'" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:16px;text-align:center;outline:none" />'
+    +'<button id="key-save" style="width:100%;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:14px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">Enter Aurora →</button>'
+    +'<p style="font-size:0.75rem;color:#4b5563;margin-top:16px">Get a free key at <span style="color:#c084fc">platform.openai.com</span></p>'
+    +'</div></div>';
+}
+function attachKeyEvents() {
+  var btn = document.getElementById('key-save'), inp = document.getElementById('key-input');
+  if (btn) btn.addEventListener('click', function() { var v=inp?inp.value.trim():''; if(v){state.apiKey=v;localStorage.setItem(KEY_STORE,v);state.screen='worlds';render();} });
+  if (inp) inp.addEventListener('keydown', function(e){if(e.key==='Enter')btn&&btn.click();});
+}
+
+function renderHome() {
+  return '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:linear-gradient(135deg,#030712,#1a0535,#030712)">'
+    +'<div style="font-size:5rem;margin-bottom:24px" class="pulse">🌌</div>'
+    +'<h1 style="font-size:3rem;font-weight:900;margin-bottom:8px;background:linear-gradient(to right,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent">AURORA</h1>'
+    +'<p style="font-size:1.25rem;color:#d1d5db;margin-bottom:8px">You are the god here.</p>'
+    +'<p style="color:#6b7280;margin-bottom:40px">Design a world. Enter it. Shape its story forever.</p>'
+    +'<div style="display:flex;flex-direction:column;gap:16px;width:100%;max-width:18rem">'
+    +'<button id="btn-play" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter a World</button>'
+    +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'
+    +'<button id="btn-key" style="background:none;border:none;color:#6b7280;font-size:0.75rem;cursor:pointer;margin-top:8px">🔑 Change API Key</button>'
+    +'</div></div>';
+}
+function attachHomeEvents() {
+  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key');
+  if(bp) bp.addEventListener('click',function(){state.screen='worlds';render();});
+  if(bc) bc.addEventListener('click',function(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();});
+  if(bk) bk.addEventListener('click',function(){state.apiKey='';localStorage.removeItem(KEY_STORE);render();});
+}
+
+function renderWorlds() {
+  var DC={Peaceful:'#4ade80',Low:'#60a5fa',Medium:'#facc15',High:'#fb923c',Extreme:'#f87171'};
+  var cards = state.worlds.length===0
+    ? '<div style="grid-column:span 2;text-align:center;padding:6rem 0"><div style="font-size:4rem;margin-bottom:20px">🌌</div><h2 style="font-size:1.5rem;font-weight:700;margin-bottom:8px">No worlds yet</h2><p style="color:#9ca3af;margin-bottom:32px">Every god starts somewhere.</p><button id="btn-first-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Create Your First World</button></div>'
+    : state.worlds.map(function(w,i){
+        return '<div class="world-card" data-i="'+i+'" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;cursor:pointer;transition:all 0.2s">'
+          +'<div style="display:flex;justify-content:space-between;margin-bottom:16px"><span style="font-size:2rem">'+SETTING_ICONS[w.setting]+'</span><span style="font-size:0.75rem;background:rgba(255,255,255,0.1);padding:4px 10px;border-radius:9999px;color:#d1d5db">📖 '+w.experience_mode+'</span></div>'
+          +'<h3 style="font-size:1.25rem;font-weight:700;margin-bottom:4px">'+esc(w.name)+'</h3>'
+          +(w.description?'<p style="color:#9ca3af;font-size:0.875rem;margin-bottom:16px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+esc(w.description)+'</p>':'')
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.75rem">'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Setting</div><div style="color:#e5e7eb;font-weight:500">'+w.setting+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Magic</div><div style="color:#e5e7eb;font-weight:500">'+w.magic_level+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Danger</div><div style="font-weight:500;color:'+(DC[w.danger_level]||'white')+'">'+w.danger_level+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Climate</div><div style="color:#e5e7eb;font-weight:500">'+w.climate+'</div></div>'
+          +'</div></div>';
+      }).join('');
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div><h1 style="font-size:1.5rem;font-weight:700">🌌 My Worlds</h1><p style="color:#9ca3af;font-size:0.875rem">You are the god here.</p></div>'
+    +'<div style="display:flex;gap:12px"><button id="btn-new-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer">+ New World</button>'
+    +'<button id="btn-home" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:12px;cursor:pointer;font-size:0.875rem">← Home</button></div>'
+    +'</div>'
+    +'<div style="max-width:56rem;margin:0 auto;padding:40px 24px"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">'+cards+'</div></div></div>';
+}
+function attachWorldsEvents() {
+  var h=document.getElementById('btn-home'),n=document.getElementById('btn-new-world'),f=document.getElementById('btn-first-world');
+  if(h) h.addEventListener('click',function(){state.screen='home';render();});
+  function goCreate(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();}
+  if(n) n.addEventListener('click',goCreate);
+  if(f) f.addEventListener('click',goCreate);
+  document.querySelectorAll('.world-card').forEach(function(el){
+    el.addEventListener('click',function(){state.currentWorld=state.worlds[parseInt(el.dataset.i)];state.screen='worldDetail';render();});
+  });
+}
+
+function renderCreateWorld() {
+  var step=state.worldStep, w=state.draftWorld;
+  var content='';
+  if(step===0){
+    content='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><h2 style="font-size:1.5rem;font-weight:700">Name Your World</h2>'+aiAssistBtn('full','Fill everything for me')+'</div>'
+      +'<p style="color:#9ca3af;margin-bottom:24px">What will you call this place?</p>'
+      +'<input id="world-name" type="text" placeholder="e.g. Aethoria, The Shattered Realms..." value="'+esc(w.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:12px;outline:none" />'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Description</label>'+aiAssistBtn('description','Generate')+'</div>'
+      +'<textarea id="world-desc" placeholder="Describe your world briefly..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px">'+esc(w.description)+'</textarea>'
+      +((state.aiSuggestionField==='description'||state.aiSuggestionField==='full')?suggestionBox():'')
+      +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:16px">Setting</h3>'+selectGridHtml(SETTINGS,SETTING_ICONS,'setting',w);
+  } else if(step===1){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Nature & Climate</h2><p style="color:#9ca3af;margin-bottom:24px">Shape the physical world.</p>'
+      +'<h3 style="font-weight:600;margin-bottom:8px">Climate</h3>'+selectGridHtml(CLIMATES,CLIMATE_ICONS,'climate',w)
+      +sliderHtml('Magic Level',MAGIC_LEVELS,MAGIC_ICONS,'magic_level',w)
+      +sliderHtml('Technology Level',TECH_LEVELS,TECH_ICONS,'technology_level',w);
+  } else if(step===2){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Society & Power</h2><p style="color:#9ca3af;margin-bottom:24px">Who lives here and how dangerous is it?</p>'
+      +sliderHtml('Danger Level',DANGER_LEVELS,DANGER_ICONS,'danger_level',w)
+      +sliderHtml('Population Density',POP_DENSITIES,POP_ICONS,'population_density',w)
+      +'<div style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Factions & Groups</label>'+aiAssistBtn('factions','Generate')+'</div>'
+      +'<textarea id="world-factions" placeholder="Who holds power? e.g. The Iron Council, rebel guilds..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.factions)+'</textarea>'
+      +(state.aiSuggestionField==='factions'?suggestionBox():'')+'</div>';
+  } else if(step===3){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Lore & Landmarks</h2><p style="color:#9ca3af;margin-bottom:24px">The history and geography that shapes everything.</p>'
+      +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">World Lore</label>'+aiAssistBtn('lore','Generate')+'</div>'
+      +'<textarea id="world-lore" placeholder="Origins, history, major events..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.lore)+'</textarea>'
+      +(state.aiSuggestionField==='lore'?suggestionBox():'')+'</div>'
+      +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Landmarks</label>'+aiAssistBtn('landmarks','Generate')+'</div>'
+      +'<textarea id="world-landmarks" placeholder="Famous places, ruins, cities, forbidden zones..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.landmarks)+'</textarea>'
+      +(state.aiSuggestionField==='landmarks'?suggestionBox():'')+'</div>'
+      +'<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Rules of Nature</label>'+aiAssistBtn('rules_of_nature','Generate')+'</div>'
+      +'<textarea id="world-rules" placeholder="How does magic work? Are there gods?" rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.rules_of_nature)+'</textarea>'
+      +(state.aiSuggestionField==='rules_of_nature'?suggestionBox():'')+'</div>';
+  } else if(step===4){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Experience Mode</h2><p style="color:#9ca3af;margin-bottom:24px">How will you live in this world?</p>'
+      +'<div style="display:flex;flex-direction:column;gap:16px">'
+      +[{id:'Narrative',icon:'📖',title:'Narrative Mode',desc:'AI-driven text adventure. Your words shape the story. Cinematic, immersive, unpredictable.',d:false},{id:'Visual',icon:'🎮',title:'Visual Mode',desc:'Coming soon — 2D world exploration.',d:true}].map(function(m){
+        var sel=w.experience_mode===m.id;
+        return '<button class="mode-btn" data-mode="'+m.id+'" '+(m.d?'disabled':'')+' style="text-align:left;padding:20px;border-radius:16px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.15)':'rgba(255,255,255,0.05)')+';color:white;cursor:'+(m.d?'not-allowed':'pointer')+';opacity:'+(m.d?'0.4':'1')+'">'
+          +'<div style="font-size:2rem;margin-bottom:8px">'+m.icon+'</div>'
+          +'<h3 style="font-size:1.125rem;font-weight:700">'+m.title+(m.d?' <span style="font-size:0.75rem;color:#6b7280">Soon</span>':'')+'</h3>'
+          +'<p style="font-size:0.875rem;color:#9ca3af;margin-top:4px">'+m.desc+'</p>'
+          +'</button>';
+      }).join('')+'</div>';
+  }
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
+    +'<button id="btn-back-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'
+    +stepBarHtml(WORLD_STEPS,WORLD_ICONS,step)
+    +'</div>'
+    +'<div style="max-width:42rem;margin:0 auto;padding:40px 24px">'+content
+    +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
+    +(step>0?'<button id="btn-prev-step" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
+    +(step<4?'<button id="btn-next-step" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
+       :'<button id="btn-save-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Create World</button>')
+    +'</div></div></div>';
+}
+function attachCreateWorldEvents() {
+  var bback=document.getElementById('btn-back-worlds'),bprev=document.getElementById('btn-prev-step'),bnext=document.getElementById('btn-next-step'),bsave=document.getElementById('btn-save-world');
+  if(bback) bback.addEventListener('click',function(){state.screen='worlds';render();});
+  if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;render();});
+  if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;render();});
+  if(bsave) bsave.addEventListener('click',function(){collectWorldStep();var w=Object.assign({},state.draftWorld,{id:Date.now().toString(),status:'Active',created_date:new Date().toISOString()});state.worlds.push(w);save();state.currentWorld=w;state.screen='worldDetail';render();});
+  document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld[b.dataset.field]=b.dataset.val;render();});});
+  document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
+  document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
+  document.querySelectorAll('.ai-assist-btn').forEach(function(b){b.addEventListener('click',function(){collectWorldStep();aiAssistWorld(b.dataset.assistType);});});
+  var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
+  if(ba) ba.addEventListener('click',applyAiSuggestion);
+  if(bd) bd.addEventListener('click',function(){state.aiSuggestion=null;state.aiSuggestionField=null;render();});
+}
+function collectWorldStep() {
+  var n=document.getElementById('world-name');if(n)state.draftWorld.name=n.value;
+  var d=document.getElementById('world-desc');if(d)state.draftWorld.description=d.value;
+  var f=document.getElementById('world-factions');if(f)state.draftWorld.factions=f.value;
+  var l=document.getElementById('world-lore');if(l)state.draftWorld.lore=l.value;
+  var lm=document.getElementById('world-landmarks');if(lm)state.draftWorld.landmarks=lm.value;
+  var r=document.getElementById('world-rules');if(r)state.draftWorld.rules_of_nature=r.value;
+}
+
+function renderWorldDetail() {
+  var w=state.currentWorld;
+  var chars=state.characters.filter(function(c){return c.world_id===w.id;});
+  var DC={Peaceful:'#4ade80',Low:'#60a5fa',Medium:'#facc15',High:'#fb923c',Extreme:'#f87171'};
+  var charCards=chars.length===0
+    ?'<p style="color:#6b7280;margin-bottom:16px">No characters yet. Create one to enter this world.</p>'
+    :chars.map(function(c,i){
+        return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><h3 style="font-size:1.125rem;font-weight:700">'+esc(c.name)+'</h3><span style="font-size:0.75rem;background:rgba(147,51,234,0.2);color:#c084fc;padding:4px 10px;border-radius:9999px">'+esc(c.class)+'</span></div>'
+          +'<p style="color:#9ca3af;font-size:0.875rem;margin-bottom:12px">'+esc((c.backstory||'No backstory.').slice(0,100))+'</p>'
+          +'<div style="display:flex;gap:12px;font-size:0.75rem;color:#6b7280;margin-bottom:16px"><span>❤️ '+c.health+'/100</span><span>⭐ Lv.'+c.level+'</span><span>'+esc(c.alignment)+'</span></div>'
+          +'<button class="enter-world-btn" data-char-i="'+i+'" style="width:100%;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:10px;border-radius:12px;font-weight:600;font-size:0.875rem;cursor:pointer">📖 Enter World</button>'
+          +'</div>';
+      }).join('');
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="display:flex;align-items:center;gap:16px"><button id="btn-back-to-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Worlds</button>'
+    +'<div><h1 style="font-size:1.5rem;font-weight:700">'+esc(w.name)+'</h1><p style="color:#9ca3af;font-size:0.875rem">'+w.setting+' · '+w.climate+' · '+w.danger_level+' danger</p></div></div>'
+    +'<button id="btn-create-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer">+ New Character</button>'
+    +'</div>'
+    +'<div style="max-width:48rem;margin:0 auto;padding:40px 24px">'
+    +(w.description?'<p style="color:#d1d5db;font-size:1.125rem;margin-bottom:32px">'+esc(w.description)+'</p>':'')
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:40px">'
+    +[['Magic',w.magic_level,'#c084fc'],['Tech',w.technology_level,'#60a5fa'],['Danger',w.danger_level,DC[w.danger_level]||'white'],['Population',w.population_density,'#4ade80']].map(function(x){
+      return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center"><div style="font-size:0.75rem;color:#6b7280;margin-bottom:4px">'+x[0]+'</div><div style="font-weight:700;color:'+x[2]+'">'+x[1]+'</div></div>';
+    }).join('')+'</div>'
+    +(w.lore?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">📜 Lore</h3><p style="color:#d1d5db;font-size:0.875rem;line-height:1.6">'+esc(w.lore)+'</p></div>':'')
+    +(w.factions?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">⚔️ Factions</h3><p style="color:#d1d5db;font-size:0.875rem">'+esc(w.factions)+'</p></div>':'')
+    +'<h2 style="font-size:1.25rem;font-weight:700;margin-bottom:16px">Characters</h2>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">'+charCards+'</div>'
+    +'</div></div>';
+}
+function attachWorldDetailEvents() {
+  var b=document.getElementById('btn-back-to-worlds'),c=document.getElementById('btn-create-char');
+  if(b) b.addEventListener('click',function(){state.screen='worlds';render();});
+  if(c) c.addEventListener('click',function(){state.screen='createChar';state.charStep=0;state.draftChar=freshChar(state.currentWorld.id,state.currentWorld.name);render();});
+  document.querySelectorAll('.enter-world-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var chars=state.characters.filter(function(c){return c.world_id===state.currentWorld.id;});
+      state.currentChar=chars[parseInt(btn.dataset.charI)];
+      state.screen='play'; startGame();
+    });
+  });
+}
+
+function renderCreateChar() {
+  var step=state.charStep,c=state.draftChar,content='';
+  if(step===0){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Who are you?</h2><p style="color:#9ca3af;margin-bottom:24px">Name and class.</p>'
+      +'<input id="char-name" type="text" placeholder="Character name..." value="'+esc(c.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:24px;outline:none" />'
+      +'<h3 style="font-weight:600;margin-bottom:12px">Class</h3>'+selectGridHtml(CLASSES,CLASS_ICONS,'class',c);
+  } else if(step===1){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2><p style="color:#9ca3af;margin-bottom:24px">Where did you come from?</p>'
+      +'<textarea id="char-backstory" placeholder="History, motivation, secrets..." rows="5" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.backstory)+'</textarea>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Location</label>'
+      +'<input id="char-location" type="text" placeholder="Where do you begin?" value="'+esc(c.current_location)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;outline:none" />';
+  } else if(step===2){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Abilities & Inventory</h2><p style="color:#9ca3af;margin-bottom:24px">What can you do and carry?</p>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Special Abilities</label>'
+      +'<textarea id="char-abilities" placeholder="Combat skills, magic, stealth..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.abilities)+'</textarea>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
+      +'<textarea id="char-inventory" placeholder="Items you carry..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
+  } else if(step===3){
+    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass.</p>'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'
+      +ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>';
+  }
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
+    +'<button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'+stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div>'
+    +'<div style="max-width:36rem;margin:0 auto;padding:40px 24px">'+content
+    +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
+    +(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
+    +(step<3?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
+       :'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter the World</button>')
+    +'</div></div></div>';
+}
+function attachCreateCharEvents() {
+  var bb=document.getElementById('btn-back-char'),bp=document.getElementById('btn-char-prev'),bn=document.getElementById('btn-char-next'),bs=document.getElementById('btn-save-char');
+  if(bb) bb.addEventListener('click',function(){state.screen='worldDetail';render();});
+  if(bp) bp.addEventListener('click',function(){collectCharStep();state.charStep--;render();});
+  if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();});
+  if(bs) bs.addEventListener('click',function(){collectCharStep();var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
+  document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar[b.dataset.field]=b.dataset.val;render();});});
+  document.querySelectorAll('.align-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});});
+}
+function collectCharStep() {
+  var n=document.getElementById('char-name');if(n)state.draftChar.name=n.value;
+  var b=document.getElementById('char-backstory');if(b)state.draftChar.backstory=b.value;
+  var l=document.getElementById('char-location');if(l)state.draftChar.current_location=l.value;
+  var a=document.getElementById('char-abilities');if(a)state.draftChar.abilities=a.value;
+  var i=document.getElementById('char-inventory');if(i)state.draftChar.inventory=i.value;
+}
+
+// ---- Campaign Journal Panel ----
+function renderJournal() {
+  var attC = {friendly:'#4ade80',neutral:'#facc15',hostile:'#f87171'};
+  var questC = {active:'#60a5fa',completed:'#4ade80',failed:'#f87171'};
+  return '<div style="position:fixed;top:0;right:0;height:100vh;width:320px;background:#0d0520;border-left:1px solid rgba(147,51,234,0.3);z-index:100;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div style="padding:16px;border-bottom:1px solid rgba(147,51,234,0.2);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+    +'<h2 style="font-size:1rem;font-weight:700;color:#c084fc">📖 Campaign Journal</h2>'
+    +'<button id="btn-close-journal" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.25rem">✕</button>'
+    +'</div>'
+    +'<div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:20px">'
+
+    // Campaign Summary
+    +'<div><h3 style="font-size:0.75rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">📜 Campaign Summary</h3>'
+    +(state.summarizing?'<p style="font-size:0.75rem;color:#c084fc" class="pulse">✨ Updating...</p>'
+      :state.campaignSummary?'<p style="font-size:0.8rem;color:#d1d5db;line-height:1.5">'+esc(state.campaignSummary)+'</p>'
+      :'<p style="font-size:0.8rem;color:#6b7280">Your story is just beginning...</p>')
+    +'</div>'
+
+    // Key Events
+    +(state.keyEvents.length>0?'<div><h3 style="font-size:0.75rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">⚡ Key Events</h3>'
+      +'<div style="display:flex;flex-direction:column;gap:6px">'
+      +state.keyEvents.slice(-8).reverse().map(function(e){
+        return '<div style="background:rgba(255,255,255,0.03);border-left:2px solid rgba(147,51,234,0.4);padding:6px 10px;border-radius:0 6px 6px 0"><p style="font-size:0.75rem;color:#d1d5db">'+esc(e.text)+'</p><p style="font-size:0.65rem;color:#6b7280">Turn '+e.turn+'</p></div>';
+      }).join('')+'</div></div>':'')
+
+    // NPCs
+    +'<div><h3 style="font-size:0.75rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">👥 Known NPCs</h3>'
+    +(state.npcs.length===0?'<p style="font-size:0.8rem;color:#6b7280">No one met yet.</p>'
+      :state.npcs.map(function(n){
+        return '<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;margin-bottom:6px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px"><span style="font-size:0.8rem;font-weight:600;color:#e5e7eb">'+esc(n.name)+'</span><span style="font-size:0.65rem;font-weight:700;color:'+(attC[n.attitude]||'#fff')+'">'+n.attitude.toUpperCase()+'</span></div><p style="font-size:0.75rem;color:#9ca3af">'+esc(n.notes)+'</p></div>';
+      }).join(''))
+    +'</div>'
+
+    // Quests
+    +'<div><h3 style="font-size:0.75rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">🗺️ Quests</h3>'
+    +(state.quests.length===0?'<p style="font-size:0.8rem;color:#6b7280">No quests yet.</p>'
+      :state.quests.map(function(q){
+        return '<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;margin-bottom:6px;border-left:2px solid '+(questC[q.status]||'#fff')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px"><span style="font-size:0.8rem;font-weight:600;color:#e5e7eb">'+esc(q.title)+'</span><span style="font-size:0.65rem;font-weight:700;color:'+(questC[q.status]||'#fff')+'">'+q.status.toUpperCase()+'</span></div><p style="font-size:0.75rem;color:#9ca3af">'+esc(q.desc)+'</p></div>';
+      }).join(''))
+    +'</div>'
+
+    // Chapters
+    +(state.chapters.length>0?'<div><h3 style="font-size:0.75rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">💾 Chapters</h3>'
+      +state.chapters.slice(-5).reverse().map(function(ch){
+        return '<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:10px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#d1d5db;font-weight:500;margin-bottom:3px"><span>'+esc(ch.title)+'</span><span style="color:#6b7280">❤️ '+ch.hp+'</span></div><p style="font-size:0.7rem;color:#6b7280">'+esc(ch.preview)+'</p></div>';
+      }).join('')+'</div>':'')
+
+    +'</div></div>';
+}
+
+// ---- Play Screen ----
+function renderPlay() {
+  var w=state.currentWorld,c=state.currentChar;
+
+  var msgs = state.messages.map(function(msg){
+    if(msg.role==='roll'){
+      if(msg.enemyRoll!==null&&msg.enemyRoll!==0){
+        var rc=rollColor(msg.result);
+        return '<div style="max-width:28rem;margin:4px auto"><div style="display:flex;align-items:center;gap:12px;padding:8px 16px;border-radius:12px;border:1px solid '+rc+'40;background:'+rc+'10;font-size:0.75rem;font-weight:700;color:'+rc+'"><span>🎲 You: '+msg.playerRoll+'</span><span style="color:rgba(255,255,255,0.3)">vs</span><span>🎲 Enemy: '+msg.enemyRoll+'</span><span style="margin-left:auto">'+rollLabel(msg.result)+'</span></div></div>';
+      }
+      return '<div style="max-width:28rem;margin:4px auto"><div style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);font-size:0.75rem;color:#9ca3af"><span>🎲 Skill Check: '+msg.playerRoll+'/20</span><span style="margin-left:auto;color:#c084fc">'+rollLabel(msg.result)+'</span></div></div>';
+    }
+    if(msg.role==='system') return '<div style="text-align:center;margin:8px 0"><span style="font-size:0.875rem;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);padding:8px 20px;border-radius:9999px">'+esc(msg.text)+'</span></div>';
+    if(msg.role==='player') return '<div style="display:flex;justify-content:flex-end;margin:6px 0"><div style="background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.3);border-radius:16px;border-top-right-radius:3px;padding:10px 16px;max-width:70%;font-size:0.875rem;color:#e0e7ff">'+esc(msg.text)+'</div></div>';
+    if(msg.role==='narrator') return '<div style="background:linear-gradient(135deg,#111827,rgba(88,28,135,0.15));border:1px solid rgba(88,28,135,0.3);border-radius:16px;border-top-left-radius:3px;padding:18px;margin:10px 0;box-shadow:0 4px 20px rgba(0,0,0,0.3)"><div style="font-size:0.65rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">📖 Narrator</div><p style="font-size:0.875rem;line-height:1.75;color:#f3f4f6;white-space:pre-line">'+esc(msg.text)+'</p></div>';
+    return '';
+  }).join('');
+
+  var typing = state.loading?'<div style="background:linear-gradient(135deg,#111827,rgba(88,28,135,0.15));border:1px solid rgba(88,28,135,0.3);border-radius:16px;padding:18px;margin:10px 0"><div style="font-size:0.65rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">📖 Narrator</div><div style="display:flex;gap:6px"><div class="dot1" style="width:8px;height:8px;background:#a855f7;border-radius:50%"></div><div class="dot2" style="width:8px;height:8px;background:#a855f7;border-radius:50%"></div><div class="dot3" style="width:8px;height:8px;background:#a855f7;border-radius:50%"></div></div></div>':'';
+  var summarizing = state.summarizing?'<div style="text-align:center;margin:6px 0"><span style="font-size:0.75rem;color:#c084fc;background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);padding:4px 14px;border-radius:9999px" class="pulse">✨ Updating campaign memory...</span></div>':'';
+
+  var actions=(state.inCombat?COMBAT_ACTIONS:EXPLORE_ACTIONS).map(function(a){
+    var ic=state.inCombat,fl=a.type==='flee';
+    var bg=ic?(fl?'rgba(124,45,18,0.3)':'rgba(127,29,29,0.3)'):'rgba(255,255,255,0.05)';
+    var bc=ic?(fl?'rgba(249,115,22,0.4)':'rgba(239,68,68,0.4)'):'rgba(255,255,255,0.1)';
+    var tc=ic?(fl?'#fb923c':'#fca5a5'):'#d1d5db';
+    return '<button class="action-btn" data-label="'+a.label+'" data-type="'+(a.type||'explore')+'" data-icon="'+a.icon+'" '+(state.loading?'disabled':'')+' style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:0.75rem;padding:6px 12px;border-radius:9999px;border:1px solid '+bc+';background:'+bg+';color:'+tc+';cursor:pointer;opacity:'+(state.loading?'0.4':'1')+'"><span>'+a.icon+'</span><span>'+a.label+'</span></button>';
+  }).join('');
+
+  var statsBar = state.showStats?'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.7);padding:12px 16px;flex-shrink:0">'
+    +'<div style="max-width:42rem;margin:0 auto">'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:0.75rem;text-align:center;margin-bottom:10px">'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Level</div><div style="color:#facc15;font-weight:700">'+c.level+'</div></div>'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">XP</div><div style="color:#60a5fa;font-weight:700">'+c.experience+'</div></div>'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Class</div><div style="color:#c084fc;font-weight:700">'+esc(c.class)+'</div></div>'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">NPCs</div><div style="color:#4ade80;font-weight:700">'+state.npcs.length+'</div></div>'
+    +'</div>'
+    +hpBar(state.charHP,100,c.name+"'s Health")
+    +(state.inCombat&&state.enemy?'<div style="margin-top:8px">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div>':'')
+    +'</div></div>':'';
+
+  var combatBars=state.inCombat&&state.enemy&&!state.showStats?'<div style="border-bottom:1px solid rgba(127,29,29,0.3);background:rgba(0,0,0,0.6);padding:8px 16px;flex-shrink:0"><div style="max-width:42rem;margin:0 auto;display:flex;align-items:center;gap:16px"><div style="flex:1">'+hpBar(state.charHP,100,c.name)+'</div><span style="color:#f87171;font-weight:700;font-size:1.25rem">⚔️</span><div style="flex:1">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div></div></div>':'';
+
+  var toast=state.saveToast?'<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:200;background:#7e22ce;color:white;padding:8px 24px;border-radius:9999px;font-size:0.875rem;box-shadow:0 8px 24px rgba(0,0,0,0.4)">📖 Chapter saved!</div>':'';
+
+  // Turn counter + journal NPC count in header
+  var npcCount=state.npcs.length,questCount=state.quests.filter(function(q){return q.status==='active';}).length;
+  var journalBadge=state.showJournal?'':((npcCount||questCount)?'<span style="font-size:0.65rem;background:#7e22ce;color:white;padding:2px 6px;border-radius:9999px;margin-left:4px">'+(npcCount+questCount)+'</span>':'');
+
+  var mainStyle=state.showJournal?'margin-right:320px;':'';
+
+  return toast
+    +(state.showJournal?renderJournal():'')
+    +'<div style="display:flex;flex-direction:column;height:100vh;background:#030712;'+mainStyle+'">'
+    // Header
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.5);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+    +'<div style="display:flex;align-items:center;gap:12px"><button id="btn-exit-play" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Exit</button>'
+    +'<div><div style="font-weight:700;font-size:0.875rem">📖 '+esc(w.name)+(state.inCombat?' <span style="font-size:0.7rem;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:2px 8px;border-radius:9999px">⚔️ COMBAT</span>':'')+'</div>'
+    +'<div style="font-size:0.75rem;color:#a855f7">'+esc(c.name)+' · '+esc(c.class)+' · Turn '+state.turnCount+'</div></div></div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button id="btn-save-chap" style="font-size:0.75rem;background:rgba(255,255,255,0.1);border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">💾</button>'
+    +'<button id="btn-toggle-stats" style="font-size:0.75rem;background:'+(state.showStats?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">📊</button>'
+    +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
+    +'</div></div>'
+    +statsBar+combatBars
+    // Messages
+    +'<div id="messages-scroll" style="flex:1;overflow-y:auto;padding:24px 16px">'
+    +'<div style="max-width:42rem;margin:0 auto">'+msgs+typing+summarizing+'<div id="messages-end"></div></div>'
+    +'</div>'
+    // Quick actions
+    +'<div style="border-top:1px solid rgba(255,255,255,0.05);padding:8px 16px;flex-shrink:0;overflow-x:auto">'
+    +'<div style="max-width:42rem;margin:0 auto;display:flex;gap:8px">'+actions+'</div></div>'
+    // Input
+    +'<div style="border-top:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.4);padding:16px;flex-shrink:0">'
+    +'<div style="max-width:42rem;margin:0 auto;display:flex;gap:12px">'
+    +'<textarea id="play-input" rows="2" placeholder="'+(state.inCombat?'Describe your attack or tactic...':'What do you do? (Enter to send)')+'" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;resize:none"></textarea>'
+    +'<button id="btn-send" '+(state.loading?'disabled':'')+' style="align-self:flex-end;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 20px;border-radius:12px;font-weight:600;cursor:pointer;opacity:'+(state.loading?'0.4':'1')+'">'+(state.loading?'...':'→')+'</button>'
+    +'</div></div></div>';
+}
+
+function attachPlayEvents() {
+  var ex=document.getElementById('btn-exit-play'),sc=document.getElementById('btn-save-chap'),ts=document.getElementById('btn-toggle-stats'),tj=document.getElementById('btn-toggle-journal'),send=document.getElementById('btn-send'),inp=document.getElementById('play-input'),cj=document.getElementById('btn-close-journal');
+  if(ex) ex.addEventListener('click',function(){state.screen='worldDetail';render();});
+  if(sc) sc.addEventListener('click',function(){var last=state.messages.filter(function(m){return m.role==='narrator';}).pop();saveChapter(last?last.text:'Start of journey.');});
+  if(ts) ts.addEventListener('click',function(){state.showStats=!state.showStats;render();scrollToBottom();});
+  if(tj) tj.addEventListener('click',function(){state.showJournal=!state.showJournal;render();scrollToBottom();});
+  if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
+  if(send) send.addEventListener('click',function(){if(inp)sendMessage(inp.value);});
+  if(inp) inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage(inp.value);}});
+  document.querySelectorAll('.action-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){if(state.loading)return;if(state.inCombat)doCombatAction(btn.dataset.label,btn.dataset.type,btn.dataset.icon);else sendMessage(btn.dataset.label);});
+  });
+  scrollToBottom();
+}
+
+// ---- Boot ----
+render();
+</script>
+</body>
+</html>
