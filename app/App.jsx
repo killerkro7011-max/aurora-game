@@ -3,6 +3,7 @@ import WorldsDashboard from "./pages/WorldsDashboard";
 import WorldCreator from "./pages/WorldCreator";
 import WorldDetail from "./pages/WorldDetail";
 import CharacterCreator from "./pages/CharacterCreator";
+import NarrativePlay from "./pages/NarrativePlay";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/create-world" element={<WorldCreator />} />
         <Route path="/worlds/:id" element={<WorldDetail />} />
         <Route path="/create-character/:worldId" element={<CharacterCreator />} />
+        <Route path="/play/narrative/:worldId/:characterId" element={<NarrativePlay />} />
         <Route path="*" element={<Navigate to="/worlds" replace />} />
       </Routes>
     </BrowserRouter>

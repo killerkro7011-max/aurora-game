@@ -18,6 +18,7 @@ export default function WorldDetail() {
   const [characters, setCharacters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [showPlayModal, setShowPlayModal] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -29,6 +30,16 @@ export default function WorldDetail() {
       setLoading(false);
     });
   }, [id]);
+
+  const handleEnterWorld = () => {
+    if (characters.length === 0) {
+      navigate(`/create-character/${id}`);
+    } else if (characters.length === 1) {
+      navigate(`/play/narrative/${id}/${characters[0].id}`);
+    } else {
+      setShowPlayModal(true);
+    }
+  };
 
   if (loading) return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400 animate-pulse">
@@ -51,6 +62,44 @@ export default function WorldDetail() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-purple-950/30 to-gray-950 text-white">
+      {/* Character Select Modal */}
+      {showPlayModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <h2 className="text-xl font-bold mb-1">Choose Your Character</h2>
+            <p className="text-gray-400 text-sm mb-5">Who will you be in {world.name}?</p>
+            <div className="space-y-3">
+              {characters.map((char) => (
+                <button
+                  key={char.id}
+                  onClick={() => navigate(`/play/narrative/${id}/${char.id}`)}
+                  className="w-full flex items-center gap-4 bg-white/5 hover:bg-purple-600/20 border border-white/10 hover:border-purple-500/50 rounded-xl p-4 transition text-left"
+                >
+                  <span className="text-3xl">🧙</span>
+                  <div>
+                    <p className="font-bold text-white">{char.name}</p>
+                    <p className="text-xs text-gray-400">{char.class} · Level {char.level} · {char.alignment}</p>
+                  </div>
+                  <span className="ml-auto text-purple-400">→</span>
+                </button>
+              ))}
+              <button
+                onClick={() => { setShowPlayModal(false); navigate(`/create-character/${id}`); }}
+                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-white/10 hover:border-purple-500/40 rounded-xl p-3 text-gray-400 hover:text-purple-300 transition text-sm"
+              >
+                + Create new character
+              </button>
+            </div>
+            <button
+              onClick={() => setShowPlayModal(false)}
+              className="mt-4 w-full text-gray-500 hover:text-white text-sm transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="border-b border-white/10 bg-black/30 backdrop-blur-md px-6 py-4 flex items-center gap-4">
         <button onClick={() => navigate("/worlds")} className="text-gray-400 hover:text-white transition">
@@ -63,8 +112,8 @@ export default function WorldDetail() {
           <p className="text-xs text-gray-400">{world.setting} · {world.experience_mode} Mode</p>
         </div>
         <button
-          onClick={() => navigate(`/play/${world.id}`)}
-          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-4 py-2 rounded-xl font-semibold text-sm transition"
+          onClick={handleEnterWorld}
+          className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-4 py-2 rounded-xl font-semibold text-sm transition shadow-lg shadow-purple-500/20"
         >
           ▶ Enter World
         </button>
@@ -121,7 +170,7 @@ export default function WorldDetail() {
 
         {/* Tab Content */}
         {activeTab === "overview" && (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-10">
             {world.rules_of_nature && (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <h3 className="font-bold text-purple-300 mb-2 flex items-center gap-2">🌿 Rules of Nature</h3>
@@ -134,11 +183,27 @@ export default function WorldDetail() {
                 <p>Your world is still being shaped. Add lore, factions, and details to bring it to life.</p>
               </div>
             )}
+            {/* Enter World CTA */}
+            <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/20 border border-purple-700/30 rounded-2xl p-6 text-center mt-6">
+              <p className="text-2xl mb-2">⚔️</p>
+              <h3 className="font-bold text-white text-lg mb-1">Ready to enter?</h3>
+              <p className="text-gray-400 text-sm mb-4">
+                {characters.length === 0
+                  ? "Create a character to begin your journey."
+                  : `You have ${characters.length} character${characters.length > 1 ? "s" : ""} ready.`}
+              </p>
+              <button
+                onClick={handleEnterWorld}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-8 py-3 rounded-xl font-bold text-white transition shadow-lg shadow-purple-500/20"
+              >
+                {characters.length === 0 ? "✨ Create Character" : "▶ Enter World"}
+              </button>
+            </div>
           </div>
         )}
 
         {activeTab === "lore" && (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-10">
             {world.lore ? (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <h3 className="font-bold text-purple-300 mb-3 flex items-center gap-2">📜 World History & Lore</h3>
@@ -160,7 +225,7 @@ export default function WorldDetail() {
         )}
 
         {activeTab === "factions" && (
-          <div>
+          <div className="pb-10">
             {world.factions ? (
               <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
                 <h3 className="font-bold text-purple-300 mb-3 flex items-center gap-2">⚔️ Factions & Powers</h3>
@@ -176,7 +241,7 @@ export default function WorldDetail() {
         )}
 
         {activeTab === "characters" && (
-          <div>
+          <div className="pb-10">
             {characters.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <p className="text-4xl mb-3">🧙</p>
@@ -191,16 +256,23 @@ export default function WorldDetail() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {characters.map((char) => (
-                  <div key={char.id} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div
+                    key={char.id}
+                    className="bg-white/5 border border-white/10 rounded-2xl p-5 cursor-pointer hover:border-purple-500/50 transition"
+                    onClick={() => navigate(`/play/narrative/${id}/${char.id}`)}
+                  >
                     <div className="flex items-center gap-3 mb-3">
                       <span className="text-2xl">🧙</span>
                       <div>
                         <h4 className="font-bold text-white">{char.name}</h4>
                         <p className="text-xs text-gray-400">{char.class} · Level {char.level}</p>
                       </div>
+                      <span className="ml-auto text-xs text-purple-400">▶ Play</span>
                     </div>
-                    <p className="text-sm text-gray-400 line-clamp-2">{char.backstory}</p>
-                    <div className="mt-3 flex gap-2 text-xs">
+                    {char.backstory && (
+                      <p className="text-sm text-gray-400 line-clamp-2 mb-3">{char.backstory}</p>
+                    )}
+                    <div className="flex gap-2 text-xs">
                       <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">HP: {char.health}</span>
                       <span className="bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{char.alignment}</span>
                     </div>
@@ -210,15 +282,13 @@ export default function WorldDetail() {
                   onClick={() => navigate(`/create-character/${world.id}`)}
                   className="flex flex-col items-center justify-center h-36 bg-white/3 border-2 border-dashed border-white/10 rounded-2xl cursor-pointer hover:border-purple-500/50 transition group"
                 >
-                  <span className="text-2xl mb-1 group-hover:scale-110 transition">+</span>
-                  <span className="text-gray-400 text-sm">New Character</span>
+                  <span className="text-2xl mb-1 group-hover:scale-110 transition">🧙</span>
+                  <span className="text-gray-400 font-medium group-hover:text-purple-300 transition text-sm">Create another character</span>
                 </button>
               </div>
             )}
           </div>
         )}
-
-        <div className="h-10" />
       </div>
     </div>
   );
