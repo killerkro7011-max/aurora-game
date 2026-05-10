@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "world_id": {
+      "type": "string"
+    },
+    "class": {
+      "type": "string"
+    },
+    "backstory": {
+      "type": "string"
+    },
+    "abilities": {
+      "type": "string"
+    },
+    "inventory": {
+      "type": "string"
+    },
+    "current_location": {
+      "type": "string"
+    },
+    "health": {
+      "type": "number"
+    },
+    "level": {
+      "type": "number"
+    },
+    "experience": {
+      "type": "number"
+    },
+    "alignment": {
+      "type": "string",
+      "enum": [
+        "Good",
+        "Neutral",
+        "Evil",
+        "Chaotic Good",
+        "Lawful Good",
+        "Chaotic Evil",
+        "Lawful Evil",
+        "True Neutral"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Resting",
+        "Dead"
+      ]
+    }
+  },
+  "required": [],
+  "name": "PlayerCharacter"
+}

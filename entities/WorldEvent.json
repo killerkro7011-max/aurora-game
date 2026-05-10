@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "properties": {
+    "world_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "Natural Disaster",
+        "War",
+        "Discovery",
+        "Political",
+        "Magical",
+        "Supernatural",
+        "Player Action",
+        "NPC Action"
+      ]
+    },
+    "impact": {
+      "type": "string",
+      "enum": [
+        "Minor",
+        "Moderate",
+        "Major",
+        "World-Altering"
+      ]
+    },
+    "affected_area": {
+      "type": "string"
+    },
+    "narrative": {
+      "type": "string"
+    },
+    "resolved": {
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "name": "WorldEvent"
+}

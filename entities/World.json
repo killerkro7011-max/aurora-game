@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "setting": {
+      "type": "string",
+      "enum": [
+        "Fantasy",
+        "Sci-Fi",
+        "Modern",
+        "Post-Apocalyptic",
+        "Ancient",
+        "Custom"
+      ]
+    },
+    "climate": {
+      "type": "string",
+      "enum": [
+        "Tropical",
+        "Arctic",
+        "Desert",
+        "Temperate",
+        "Oceanic",
+        "Mixed"
+      ]
+    },
+    "magic_level": {
+      "type": "string",
+      "enum": [
+        "None",
+        "Low",
+        "Medium",
+        "High",
+        "Unlimited"
+      ]
+    },
+    "technology_level": {
+      "type": "string",
+      "enum": [
+        "Primitive",
+        "Medieval",
+        "Industrial",
+        "Modern",
+        "Futuristic"
+      ]
+    },
+    "danger_level": {
+      "type": "string",
+      "enum": [
+        "Peaceful",
+        "Low",
+        "Medium",
+        "High",
+        "Extreme"
+      ]
+    },
+    "population_density": {
+      "type": "string",
+      "enum": [
+        "Empty",
+        "Sparse",
+        "Moderate",
+        "Dense",
+        "Overcrowded"
+      ]
+    },
+    "lore": {
+      "type": "string"
+    },
+    "factions": {
+      "type": "string"
+    },
+    "landmarks": {
+      "type": "string"
+    },
+    "rules_of_nature": {
+      "type": "string"
+    },
+    "experience_mode": {
+      "type": "string",
+      "enum": [
+        "Visual",
+        "Narrative",
+        "Both"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Draft",
+        "Active",
+        "Archived"
+      ]
+    },
+    "cover_image": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "name": "World"
+}
