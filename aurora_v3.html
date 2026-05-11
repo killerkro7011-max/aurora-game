@@ -832,6 +832,46 @@ function attachKeyEvents() {
   if (inp) inp.addEventListener('keydown', function(e){if(e.key==='Enter')btn&&btn.click();});
 }
 
+function formatImportField(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) {
+    return val.map(function(item) {
+      if (typeof item === 'string') return item;
+      if (typeof item === 'object') {
+        // e.g. { name: 'X', description: 'Y', goal: 'Z' }
+        var parts = [];
+        if (item.name) parts.push(item.name);
+        if (item.description) parts.push(item.description);
+        if (item.goal) parts.push('Goal: ' + item.goal);
+        if (item.significance) parts.push(item.significance);
+        if (item.details) parts.push(item.details);
+        if (item.location) parts.push(item.location);
+        // fallback: any remaining string values
+        if (parts.length === 0) {
+          Object.keys(item).forEach(function(k){ if(typeof item[k]==='string') parts.push(item[k]); });
+        }
+        return parts.join(' — ');
+      }
+      return String(item);
+    }).join('\n\n');
+  }
+  if (typeof val === 'object') {
+    // Object with keys as faction/landmark names
+    return Object.keys(val).map(function(k) {
+      var v = val[k];
+      if (typeof v === 'string') return k + ' — ' + v;
+      if (typeof v === 'object') {
+        var parts = [k];
+        Object.keys(v).forEach(function(sk){ if(typeof v[sk]==='string') parts.push(v[sk]); });
+        return parts.join(' — ');
+      }
+      return k + ': ' + String(v);
+    }).join('\n\n');
+  }
+  return String(val);
+}
+
 async function importFictionalWorld(query) {
   state.importing = true; state.importError = null; render();
 
@@ -876,9 +916,9 @@ Return ONLY a valid JSON object. No markdown fences, no extra text.`;
       danger_level: levels.indexOf(json.danger_level) !== -1 ? json.danger_level : 'Medium',
       population_density: densities.indexOf(json.population_density) !== -1 ? json.population_density : 'Moderate',
       lore: json.lore || '',
-      factions: json.factions || '',
-      landmarks: json.landmarks || '',
-      rules_of_nature: json.rules_of_nature || '',
+      factions: formatImportField(json.factions),
+      landmarks: formatImportField(json.landmarks),
+      rules_of_nature: formatImportField(json.rules_of_nature),
     };
     state.importing = false;
     state.screen = 'createWorld';
