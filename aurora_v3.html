@@ -72,6 +72,9 @@ let state = {
   importing: false,
   importError: null,
   importCategory: 'books',
+  expandingWorld: false,
+  expandPrompt: '',
+  showExpandOverlay: false,
 };
 
 function freshWorld() {
@@ -582,23 +585,69 @@ async function aiAssistWorld(type) {
     factions: 'Based on: ' + ctx + '\n\nCreate 3 factions with names and one-sentence descriptions. Return ONLY the text.',
     landmarks: 'Based on: ' + ctx + '\n\nCreate 3-4 memorable landmarks tied to this world. Each with name and brief description. Return ONLY the text.',
     rules_of_nature: 'Based on: ' + ctx + '\n\nDescribe unique rules of nature — magic system, unusual physics, gods, what makes this world distinct. 2-3 sentences. Return ONLY the text.',
-    full: 'Based on: ' + ctx + '\n\nFill in ALL missing details. Return JSON: {"description":"...","lore":"...","factions":"...","landmarks":"...","rules_of_nature":"..."}. Return ONLY valid JSON.',
+    full: '',
   };
   try {
-    var result = await callAI('You are a creative world-builder. Be vivid and specific.', prompts[type]||prompts.description, 400);
-    if (type === 'full') {
-      try {
-        var json = JSON.parse(result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim());
-        if (json.description && !w.description) state.draftWorld.description = json.description;
-        if (json.lore && !w.lore) state.draftWorld.lore = json.lore;
-        if (json.factions && !w.factions) state.draftWorld.factions = json.factions;
-        if (json.landmarks && !w.landmarks) state.draftWorld.landmarks = json.landmarks;
-        if (json.rules_of_nature && !w.rules_of_nature) state.draftWorld.rules_of_nature = json.rules_of_nature;
-        state.aiSuggestion = 'All fields filled in! Review and edit anything you like.';
-      } catch(e) { state.aiSuggestion = result; }
-    } else { state.aiSuggestion = result; }
+    var result = await callAI('You are a creative world-builder. Be vivid and specific.', prompts[type]||prompts.description, 600);
+    state.aiSuggestion = result;
   } catch(e) { state.aiSuggestion = 'Could not generate. Check your API key.'; }
   state.aiAssisting = false; render();
+}
+
+async function expandWorldFromConcept(concept) {
+  state.expandingWorld = true; render();
+  var sys = `You are Vesper, an expert world-builder for a god-game called Aurora. A player has described a world concept in a few words. Your job is to fully flesh it out into a rich, playable world — completely original, vivid, and internally consistent. Do NOT copy real fictional universes. Build something new inspired by the concept.
+
+Return ONLY a valid JSON object with these exact keys:
+- name: A compelling world name (2-3 words max, proper noun)
+- description: 3-4 sentences. The feel, tone, and defining character of the world. Immersive and specific.
+- setting: Genre + physical nature (e.g. "High fantasy continent of warring city-states beneath twin moons")
+- climate: 1-2 sentences on the dominant climate zones and what they mean for life there
+- magic_level: One of None|Low|Medium|High|Extreme
+- technology_level: One of None|Low|Medium|High|Extreme  
+- danger_level: One of None|Low|Medium|High|Extreme
+- population_density: One of Sparse|Moderate|Dense|Crowded
+- lore: 5-6 sentences. World origin, a great historical event that shaped everything, current political/social tension, what dark force or conflict is brewing NOW. Make it feel alive.
+- factions: 4-5 factions. Format each as "Name — one sentence description. Goal: X"
+- landmarks: 4-5 locations. Format each as "Name — what it is and why it matters to adventurers"
+- rules_of_nature: The magic or power system. How it works, who can use it, what it costs, what the limits are. 3-4 sentences.`;
+
+  var prompt = 'Build a full Aurora world from this concept: "' + concept + '". Make it rich, original, and internally consistent. Return ONLY a JSON object.';
+
+  try {
+    var raw = await callAI(sys, prompt, 1200);
+    var cleaned = raw.replace(/\`\`\`json[\r\n]*/g,'').replace(/\`\`\`[\r\n]*/g,'').trim();
+    var jsonStart = cleaned.indexOf('{'), jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) cleaned = cleaned.slice(jsonStart, jsonEnd+1);
+    var json = JSON.parse(cleaned);
+    var levels = ['None','Low','Medium','High','Extreme','Unlimited'];
+    var densities = ['Sparse','Moderate','Dense','Crowded','Empty'];
+    state.draftWorld = {
+      name: json.name || '',
+      description: json.description || '',
+      setting: json.setting || '',
+      climate: json.climate || '',
+      magic_level: levels.indexOf(json.magic_level) !== -1 ? json.magic_level : 'Medium',
+      technology_level: levels.indexOf(json.technology_level) !== -1 ? json.technology_level : 'Low',
+      danger_level: levels.indexOf(json.danger_level) !== -1 ? json.danger_level : 'Medium',
+      population_density: densities.indexOf(json.population_density) !== -1 ? json.population_density : 'Moderate',
+      lore: json.lore || '',
+      factions: formatImportField(json.factions),
+      landmarks: formatImportField(json.landmarks),
+      rules_of_nature: json.rules_of_nature || '',
+    };
+    state.expandingWorld = false;
+    state.expandPrompt = '';
+    state.worldStep = 0;
+    state.aiSuggestion = null;
+    state.showExpandOverlay = false;
+    state.screen = 'createWorld';
+  } catch(e) {
+    state.expandingWorld = false;
+    state.showExpandOverlay = false;
+    state.aiSuggestion = 'Could not generate world. Try a more descriptive concept. (' + e.message + ')';
+  }
+  render();
 }
 
 function applyAiSuggestion() {
@@ -785,6 +834,10 @@ function sliderHtml(label, opts, icons, field, obj) {
     +'</div>';
 }
 
+function expandWorldBtn() {
+  return '<button id="btn-expand-world" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(236,72,153,0.2));border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:7px 14px;border-radius:20px;font-size:0.78rem;font-weight:600;cursor:pointer;white-space:nowrap"><span style="font-size:1rem">✨</span>Expand My Idea</button>';
+}
+
 function aiAssistBtn(type, label) {
   var busy = state.aiAssisting && state.aiSuggestionField===type;
   return '<button class="ai-assist-btn" data-assist-type="'+type+'" '+(state.aiAssisting?'disabled':'')+' style="font-size:0.7rem;padding:4px 10px;border-radius:9999px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;cursor:pointer;opacity:'+(busy?'0.5':'1')+'">'+(busy?'✨ ...'  :'✨ '+label)+'</button>';
@@ -954,7 +1007,7 @@ function renderImportWorld() {
   var active = state.importCategory || 'books';
   var activeCat = cats.filter(function(c){return c.id===active;})[0] || cats[0];
 
-  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#1a0535,#030712);padding:0 0 60px 0;overflow-y:auto">'
+  return overlay+'<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#1a0535,#030712);padding:0 0 60px 0;overflow-y:auto">'
     // Back
     +'<button id="btn-back-home" style="position:fixed;top:16px;left:16px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#9ca3af;cursor:pointer;font-size:0.85rem;padding:6px 12px;z-index:50">\u2190 Back</button>'
     // Header
@@ -1068,11 +1121,35 @@ function attachWorldsEvents() {
   });
 }
 
+function renderExpandPromptOverlay() {
+  if (!state.showExpandOverlay) return '';
+  var loading = state.expandingWorld;
+  return '<div id="expand-overlay" style="position:fixed;inset:0;z-index:200;background:rgba(3,7,18,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px">'
+    +'<div style="background:linear-gradient(135deg,#0f0a1e,#1a0535);border:1px solid rgba(124,58,237,0.35);border-radius:20px;padding:32px;width:100%;max-width:32rem">'
+    +'<div style="text-align:center;margin-bottom:24px">'
+    +'<div style="font-size:2.4rem;margin-bottom:8px">✨</div>'
+    +'<h2 style="font-size:1.5rem;font-weight:800;background:linear-gradient(to right,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px">Expand My Idea</h2>'
+    +'<p style="color:#9ca3af;font-size:0.87rem">Describe your world in a sentence or two — Vesper will build the rest.</p>'
+    +'</div>'
+    +'<textarea id="expand-prompt-input" placeholder="e.g. A dying empire where magic is forbidden, ruled by an immortal tyrant who fears a prophecy..." rows="4" '+(loading?'disabled':'')+' style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(124,58,237,0.35);border-radius:12px;padding:13px 15px;color:white;font-size:0.9rem;outline:none;margin-bottom:16px;resize:none">'+esc(state.expandPrompt)+'</textarea>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
+    +'<button id="btn-expand-cancel" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:12px;border-radius:12px;font-size:0.9rem;cursor:pointer">Cancel</button>'
+    +'<button id="btn-expand-go" '+(loading?'disabled':'')+' style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:12px;border-radius:12px;font-size:0.9rem;font-weight:700;cursor:pointer;opacity:'+(loading?'0.65':'1')+'">'+(loading?'⏳ Building...':'🌍 Build My World')+'</button>'
+    +'</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:7px">'
+    +['A sunken world where civilisations cling to mountain peaks above toxic clouds','An empire built on enslaved gods, crumbling as the gods awaken','A frozen tundra where warmth is currency and fire is sacred','A megacity that never sleeps, where memory can be stolen and sold','A world where magic is a disease — beautiful, lethal, and spreading','An archipelago of floating islands drifting apart — slowly becoming unreachable'].map(function(ex){
+      return '<button class="expand-example" data-ex="'+ex+'" style="padding:5px 11px;border-radius:16px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#d1d5db;font-size:0.75rem;cursor:pointer">'+ex.slice(0,40)+'…</button>';
+    }).join('')
+    +'</div>'
+    +'</div></div>';
+}
+
 function renderCreateWorld() {
   var step=state.worldStep, w=state.draftWorld;
+  var overlay=renderExpandPromptOverlay();
   var content='';
   if(step===0){
-    content='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><h2 style="font-size:1.5rem;font-weight:700">Name Your World</h2>'+aiAssistBtn('full','Fill everything for me')+'</div>'
+    content='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><h2 style="font-size:1.5rem;font-weight:700">Name Your World</h2>'+expandWorldBtn()+'</div>'
       +'<p style="color:#9ca3af;margin-bottom:24px">What will you call this place?</p>'
       +'<input id="world-name" type="text" placeholder="e.g. Aethoria, The Shattered Realms..." value="'+esc(w.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:12px;outline:none" />'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Description</label>'+aiAssistBtn('description','Generate')+'</div>'
@@ -1137,6 +1214,29 @@ function attachCreateWorldEvents() {
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
   document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
   document.querySelectorAll('.ai-assist-btn').forEach(function(b){b.addEventListener('click',function(){collectWorldStep();aiAssistWorld(b.dataset.assistType);});});
+  // Expand My Idea button
+  var bExpand = document.getElementById('btn-expand-world');
+  if (bExpand) bExpand.addEventListener('click', function() { state.showExpandOverlay = true; render(); attachCreateWorldEvents(); });
+  // Expand overlay controls
+  var bExpandCancel = document.getElementById('btn-expand-cancel');
+  if (bExpandCancel) bExpandCancel.addEventListener('click', function() { state.showExpandOverlay = false; render(); });
+  var expandInput = document.getElementById('expand-prompt-input');
+  if (expandInput) expandInput.addEventListener('input', function() { state.expandPrompt = expandInput.value; });
+  var bExpandGo = document.getElementById('btn-expand-go');
+  var doExpand = function() {
+    var q = state.expandPrompt.trim() || (expandInput ? expandInput.value.trim() : '');
+    if (!q || state.expandingWorld) return;
+    state.expandPrompt = q;
+    expandWorldFromConcept(q);
+  };
+  if (bExpandGo) bExpandGo.addEventListener('click', doExpand);
+  if (expandInput) expandInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && e.ctrlKey) doExpand(); });
+  document.querySelectorAll('.expand-example').forEach(function(b) {
+    b.addEventListener('click', function() {
+      state.expandPrompt = b.dataset.ex;
+      if (expandInput) expandInput.value = b.dataset.ex;
+    });
+  });
   var bcc=document.getElementById('btn-consistency-check');
   if(bcc) bcc.addEventListener('click',function(){runConsistencyCheck();});
   attachVesperEvents('world');
