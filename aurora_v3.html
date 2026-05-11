@@ -64,6 +64,14 @@ let state = {
   aiTip: null,
   consistencyCheck: null,
   consistencyChecking: false,
+  // Vesper chat panel (world + char creation)
+  vesperOpen: false,
+  vesperMessages: [],
+  vesperThinking: false,
+  importQuery: '',
+  importing: false,
+  importError: null,
+  importCategory: 'books',
 };
 
 function freshWorld() {
@@ -75,42 +83,21 @@ function freshChar(worldId, worldName) {
     mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10 }
   };
 }
-
-function statGrade(v) {
-  if(v>=151) return 'A';
-  if(v>=111) return 'B';
-  if(v>=71)  return 'C';
-  if(v>=41)  return 'D';
-  return 'E';
-}
-function statColor(g) {
-  return {A:'#4ade80',B:'#60a5fa',C:'#facc15',D:'#f97316',E:'#f87171'}[g]||'#9ca3af';
-}
-function masteryStart(level) {
-  if(level>=91) return 150;
-  if(level>=61) return 110;
-  if(level>=31) return 70;
-  if(level>=11) return 40;
-  return 10;
-}
-function applyMasteryForLevel(ch) {
-  var base = masteryStart(ch.level||1);
-  ch.mastery = ch.mastery || {};
-  ['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){ if(!ch.mastery[s]||ch.mastery[s]<base) ch.mastery[s]=base; });
-}
-
-// Class presets — stat arrays [STR,DEX,CON,INT,WIS,CHA]
+function statGrade(v) { if(v>=151)return 'A'; if(v>=111)return 'B'; if(v>=71)return 'C'; if(v>=41)return 'D'; return 'E'; }
+function statColor(g) { return {A:'#4ade80',B:'#60a5fa',C:'#facc15',D:'#f97316',E:'#f87171'}[g]||'#9ca3af'; }
+function masteryStart(level) { if(level>=91)return 150; if(level>=61)return 110; if(level>=31)return 70; if(level>=11)return 40; return 10; }
+function applyMasteryForLevel(ch) { var base=masteryStart(ch.level||1); ch.mastery=ch.mastery||{}; ['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){if(!ch.mastery[s]||ch.mastery[s]<base)ch.mastery[s]=base;}); }
 var CLASS_PRESETS = {
-  'Knight':      { STR:140, DEX:80,  CON:150, INT:60,  WIS:70,  CHA:90,  desc:'Iron will and unbreakable defence. A wall of steel.' },
-  'Rogue':       { STR:70,  DEX:160, CON:70,  INT:90,  WIS:80,  CHA:110, desc:'Lightning reflexes and lethal precision from the shadows.' },
-  'Mage':        { STR:40,  DEX:70,  CON:50,  INT:180, WIS:130, CHA:90,  desc:'Reality bends to arcane intellect. Fragile but devastating.' },
-  'Ranger':      { STR:90,  DEX:140, CON:110, INT:80,  WIS:120, CHA:70,  desc:'At home in the wild. Patient, precise, and self-sufficient.' },
-  'Cleric':      { STR:80,  DEX:60,  CON:100, INT:90,  WIS:160, CHA:130, desc:'Divine conduit — heals allies and smites the unholy.' },
-  'Berserker':   { STR:190, DEX:90,  CON:170, INT:30,  WIS:30,  CHA:50,  desc:'Pure destructive force. Raw power with almost no control.' },
-  'Paladin':     { STR:130, DEX:70,  CON:120, INT:70,  WIS:110, CHA:140, desc:'Holy warrior. Righteous fury wrapped in divine armour.' },
-  'Assassin':    { STR:80,  DEX:180, CON:70,  INT:110, WIS:70,  CHA:100, desc:'Death delivered silently. Every move calculated.' },
-  'Scholar':     { STR:30,  DEX:60,  CON:50,  INT:190, WIS:170, CHA:80,  desc:'Encyclopaedic knowledge. The deadliest weapon is information.' },
-  'Custom':      { STR:50,  DEX:50,  CON:50,  INT:50,  WIS:50,  CHA:50,  desc:'Build your own legend from scratch.' },
+  'Knight':    {STR:140,DEX:80, CON:150,INT:60, WIS:70, CHA:90, desc:'Iron will and unbreakable defence.'},
+  'Rogue':     {STR:70, DEX:160,CON:70, INT:90, WIS:80, CHA:110,desc:'Lightning reflexes, lethal precision.'},
+  'Mage':      {STR:40, DEX:70, CON:50, INT:180,WIS:130,CHA:90, desc:'Reality bends to arcane intellect.'},
+  'Ranger':    {STR:90, DEX:140,CON:110,INT:80, WIS:120,CHA:70, desc:'Patient, precise, self-sufficient.'},
+  'Cleric':    {STR:80, DEX:60, CON:100,INT:90, WIS:160,CHA:130,desc:'Divine conduit. Heals and smites.'},
+  'Berserker': {STR:190,DEX:90, CON:170,INT:30, WIS:30, CHA:50, desc:'Pure destructive force. No control.'},
+  'Paladin':   {STR:130,DEX:70, CON:120,INT:70, WIS:110,CHA:140,desc:'Holy warrior in divine armour.'},
+  'Assassin':  {STR:80, DEX:180,CON:70, INT:110,WIS:70, CHA:100,desc:'Death delivered silently.'},
+  'Scholar':   {STR:30, DEX:60, CON:50, INT:190,WIS:170,CHA:80, desc:'The deadliest weapon is information.'},
+  'Custom':    {STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, desc:'Build your own legend from scratch.'},
 };
 
 function save() {
@@ -264,7 +251,7 @@ function buildSystemPrompt() {
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
     + '- Inventory: ' + c.inventory + '\n'
     + '- Location: ' + (c.current_location || w.name) + '\n'
-    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n'+ (c.stats ? '- Stats: STR '+c.stats.STR+'('+statGrade(c.stats.STR||50)+') DEX '+c.stats.DEX+'('+statGrade(c.stats.DEX||50)+') CON '+c.stats.CON+'('+statGrade(c.stats.CON||50)+') INT '+c.stats.INT+'('+statGrade(c.stats.INT||50)+') WIS '+c.stats.WIS+'('+statGrade(c.stats.WIS||50)+') CHA '+c.stats.CHA+'('+statGrade(c.stats.CHA||50)+')\n' : '')+ (c.mastery ? '- Mastery: STR-M '+statGrade(c.mastery.STR||10)+' DEX-M '+statGrade(c.mastery.DEX||10)+' CON-M '+statGrade(c.mastery.CON||10)+' INT-M '+statGrade(c.mastery.INT||10)+' WIS-M '+statGrade(c.mastery.WIS||10)+' CHA-M '+statGrade(c.mastery.CHA||10)+'\n' : '')+ '\n'
+    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n\n'
     + 'CAMPAIGN MEMORY (full history so far):\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
     + 'KNOWN NPCs:\n' + npcCtx + '\n\n'
     + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
@@ -437,94 +424,150 @@ function scrollToBottom() {
 }
 
 // ---- AI World Assist ----
-async // ---- World Step AI Tips ----
-var WORLD_STEP_TIPS = [
-  'Give your world a name that feels lived-in — it sets the tone for everything.',
-  'Climate shapes culture. A frozen world breeds hard people. A tropical one breeds traders.',
-  'Factions with conflicting goals create natural story tension for your character.',
-  'Good lore has contradictions — myths people believe vs what actually happened.',
-  'Narrative Mode gives you the full cinematic AI experience right away.'
-];
-
 async function fetchStepTip() {
-  var w = state.draftWorld;
-  var step = state.worldStep;
-  if (!w.name) return; // nothing to work with yet
-  state.aiTip = null; render();
-  var ctx = 'World: "'+w.name+'", Setting: '+w.setting+', Climate: '+w.climate+', Magic: '+w.magic_level+', Tech: '+w.technology_level+', Danger: '+w.danger_level+(w.description?', Desc: '+w.description:'')+(w.lore?', Lore: '+w.lore:'')+(w.factions?', Factions: '+w.factions:'');
-  var stepHints = [
-    'Give a 1-sentence creative suggestion for naming or describing this world based on its setting.',
-    'Give a 1-sentence insight about how the climate and magic level interact in interesting ways.',
-    'Give a 1-sentence suggestion about what kind of faction conflict would make this world compelling.',
-    'Point out one potential lore inconsistency or suggest one surprising historical event that fits this world.',
-    'Give a 1-sentence tip about what makes Narrative Mode campaigns work best for this type of world.',
-  ];
-  try {
-    var tip = await callAI('You are a creative world-building advisor. Be specific, brief, and inspiring. Max 2 sentences.', 'World context: '+ctx+'\n\n'+stepHints[step], 120);
-    state.aiTip = tip;
-  } catch(e) { state.aiTip = null; }
+  var w=state.draftWorld; if(!w.name)return;
+  state.aiTip=null; render();
+  var ctx='World: "'+w.name+'", Setting: '+w.setting+', Climate: '+w.climate+', Magic: '+w.magic_level+', Tech: '+w.technology_level+', Danger: '+w.danger_level+(w.description?', Desc: '+w.description:'')+(w.lore?', Lore: '+w.lore:'')+(w.factions?', Factions: '+w.factions:'');
+  var hints=['Tip for naming/describing this world based on its setting.','How do the climate and magic level interact in interesting ways?','What faction conflict would make this world compelling?','Any lore inconsistency or surprising historical event that fits?','What makes Narrative Mode work best for this type of world?'];
+  try { var tip=await callAI('World-building advisor. Be specific and brief. Max 2 sentences.','Context: '+ctx+'\n\n'+hints[state.worldStep],100); state.aiTip=tip; } catch(e){state.aiTip=null;}
   render();
 }
-
 async function runConsistencyCheck() {
-  collectWorldStep();
-  var w = state.draftWorld;
-  state.consistencyChecking = true; state.consistencyCheck = null; render();
-  var worldInfo = JSON.stringify({
-    name: w.name, setting: w.setting, climate: w.climate,
-    magic_level: w.magic_level, technology_level: w.technology_level,
-    danger_level: w.danger_level, population_density: w.population_density,
-    lore: w.lore||'', factions: w.factions||'',
-    landmarks: w.landmarks||'', rules_of_nature: w.rules_of_nature||''
-  });
-  var prompt = 'You are a world-building expert reviewing a player-created game world for logical consistency.\n\nWorld data:\n'+worldInfo+'\n\nReturn a JSON object:\n{\n  "issues": [{"field":"...","problem":"...","suggestion":"..."}],\n  "strengths": ["one-sentence praise 1","one-sentence praise 2"],\n  "verdict": "Ready to play" | "Minor issues" | "Needs attention"\n}\nOnly flag real inconsistencies (e.g. no-magic world with magic factions, medieval tech but sci-fi lore, etc.). If everything is consistent, issues should be empty. Return ONLY valid JSON.';
-  try {
-    var result = await callAI('You are a strict but helpful world-building consistency checker.', prompt, 600);
-    var cleaned = result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-    state.consistencyCheck = JSON.parse(cleaned);
-  } catch(e) {
-    state.consistencyCheck = { issues:[], strengths:['Could not parse check — your world looks good!'], verdict:'Ready to play' };
-  }
-  state.consistencyChecking = false; render();
+  collectWorldStep(); var w=state.draftWorld;
+  state.consistencyChecking=true; state.consistencyCheck=null; render();
+  var wi='Name:'+w.name+' Setting:'+w.setting+' Climate:'+w.climate+' Magic:'+w.magic_level+' Tech:'+w.technology_level+' Danger:'+w.danger_level+(w.lore?'\nLore:'+w.lore:'')+(w.factions?'\nFactions:'+w.factions:'')+(w.landmarks?'\nLandmarks:'+w.landmarks:'')+(w.rules_of_nature?'\nNatureRules:'+w.rules_of_nature:'');
+  var p='Review this game world for logical consistency.\n\nWorld:\n'+wi+'\n\nReturn JSON:{"issues":[{"field":"...","problem":"...","suggestion":"..."}],"strengths":["..."],"verdict":"Ready to play"|"Minor issues"|"Needs attention"}\nOnly flag real contradictions. Return ONLY valid JSON.';
+  try { var r=await callAI('Consistency checker. Return only valid JSON.',p,500); state.consistencyCheck=JSON.parse(r.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim()); }
+  catch(e){ state.consistencyCheck={issues:[],strengths:['World looks consistent!'],verdict:'Ready to play'}; }
+  state.consistencyChecking=false; render();
 }
-
 function consistencyCheckHtml() {
-  if (state.consistencyChecking) return '<div style="margin-top:20px;padding:14px;border-radius:12px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);color:#c084fc;font-size:0.85rem" class="pulse">🔍 Vesper is checking your world for inconsistencies...</div>';
-  if (!state.consistencyCheck) return '';
-  var cc = state.consistencyCheck;
-  var verdictColor = cc.verdict==='Ready to play'?'#4ade80':cc.verdict==='Minor issues'?'#facc15':'#f87171';
-  var html = '<div style="margin-top:20px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);overflow:hidden">'
-    +'<div style="padding:12px 16px;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:space-between">'
-    +'<span style="font-weight:700;font-size:0.9rem">🔍 Consistency Check</span>'
-    +'<span style="font-size:0.8rem;font-weight:700;color:'+verdictColor+'">'+cc.verdict+'</span>'
+  if(state.consistencyChecking) return '<div style="margin-top:16px;padding:12px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);color:#c084fc;font-size:0.85rem" class="pulse">Checking world consistency...</div>';
+  if(!state.consistencyCheck) return '';
+  var cc=state.consistencyCheck,vc=cc.verdict==='Ready to play'?'#4ade80':cc.verdict==='Minor issues'?'#facc15':'#f87171';
+  var h='<div style="margin-top:16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);overflow:hidden"><div style="padding:10px 14px;background:rgba(0,0,0,0.3);display:flex;justify-content:space-between"><span style="font-weight:700;font-size:0.85rem">Consistency Check</span><span style="font-size:0.8rem;font-weight:700;color:'+vc+'">'+cc.verdict+'</span></div>';
+  if(cc.issues&&cc.issues.length>0) h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,0.07)"><div style="font-size:0.78rem;font-weight:600;color:#f87171;margin-bottom:6px">Issues</div>'+cc.issues.map(function(x){return '<div style="margin-bottom:6px;padding:8px;border-radius:8px;background:rgba(248,113,113,0.08)"><div style="font-size:0.78rem;color:#fca5a5;font-weight:600">'+x.field+'</div><div style="font-size:0.75rem;color:#d1d5db">'+x.problem+'</div><div style="font-size:0.72rem;color:#9ca3af">Tip: '+x.suggestion+'</div></div>';}).join('')+'</div>';
+  if(cc.strengths&&cc.strengths.length>0) h+='<div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,0.07)"><div style="font-size:0.78rem;font-weight:600;color:#4ade80;margin-bottom:6px">Strengths</div>'+cc.strengths.map(function(s){return '<div style="font-size:0.75rem;color:#d1d5db">+ '+s+'</div>';}).join('')+'</div>';
+  h+='</div>'; return h;
+}
+function stepTipHtml() {
+  if(!state.aiTip) return '';
+  return '<div style="margin-bottom:16px;padding:10px 14px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);display:flex;gap:8px;align-items:flex-start"><span style="font-size:0.8rem;color:#c084fc;flex:1">Vesper: '+state.aiTip+'</span><button onclick="state.aiTip=null;render();" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1rem;padding:0;flex-shrink:0">x</button></div>';
+}
+function vesperChatHtml(context) {
+  var toggleBtn = '<button id="btn-vesper-toggle" style="'
+    +'background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;'
+    +'padding:8px 16px;border-radius:10px;font-size:0.82rem;font-weight:700;'
+    +'cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;'
+    +'box-shadow:0 2px 10px rgba(124,58,237,0.4)">'
+    +'<span style="font-size:1rem">✦</span> Ask Vesper</button>';
+
+  if (!state.vesperOpen) return toggleBtn;
+
+  var msgs = state.vesperMessages.map(function(m) {
+    var isVesper = m.role === 'assistant';
+    return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;'+(isVesper?'':'flex-direction:row-reverse')+'">'
+      +'<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:'+(isVesper?'linear-gradient(135deg,#7c3aed,#ec4899)':'rgba(255,255,255,0.1)')+';">'+(isVesper?'V':'U')+'</div>'
+      +'<div style="max-width:82%;padding:10px 13px;border-radius:12px;font-size:0.82rem;line-height:1.55;background:'+(isVesper?'rgba(124,58,237,0.18)':'rgba(255,255,255,0.07)')+';color:'+(isVesper?'#e9d5ff':'#f3f4f6')+'">'+m.content+'</div>'
+      +'</div>';
+  }).join('');
+  var placeholder = context === 'world'
+    ? 'Ask about your world... e.g. "Does my lore make sense?"'
+    : 'Ask about your character... e.g. "Is this armor lore-consistent?"';
+
+  var panel = '<div style="position:fixed;bottom:80px;right:24px;width:360px;max-height:500px;'
+    +'background:#0f0a1e;border:1px solid rgba(124,58,237,0.45);border-radius:16px;'
+    +'display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:200">'
+    // Header
+    +'<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,rgba(124,58,237,0.28),rgba(236,72,153,0.18));border-radius:16px 16px 0 0">'
+    +'<div style="display:flex;align-items:center;gap:9px">'
+    +'<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899);display:flex;align-items:center;justify-content:center;font-size:0.9rem;font-weight:800">V</div>'
+    +'<div><div style="font-size:0.88rem;font-weight:700;color:white">Vesper</div>'
+    +'<div style="font-size:0.7rem;color:#a78bfa">'+(context==='world'?'World consultant':'Character consultant')+'</div></div></div>'
+    +'<button id="btn-vesper-toggle" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3rem;line-height:1;padding:4px 8px" title="Close">×</button>'
+    +'</div>'
+    // Quick chips for char context
+    +(context==='char'?'<div style="display:flex;flex-wrap:wrap;gap:5px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06)">'
+      +['Does my armor fit?','Suggest an ability','Is this too powerful?','Unique weapon idea'].map(function(q){
+        return '<button class="vesper-chip" data-q="'+q+'" style="padding:4px 9px;border-radius:16px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;font-size:0.7rem;cursor:pointer">'+q+'</button>';
+      }).join('')+'</div>':'')
+    // World quick chips
+    +(context==='world'?'<div style="display:flex;flex-wrap:wrap;gap:5px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06)">'
+      +['Does my lore make sense?','Suggest a faction','Check for contradictions','Add a landmark'].map(function(q){
+        return '<button class="vesper-chip" data-q="'+q+'" style="padding:4px 9px;border-radius:16px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;font-size:0.7rem;cursor:pointer">'+q+'</button>';
+      }).join('')+'</div>':'')
+    // Messages
+    +'<div id="vesper-msgs" style="flex:1;overflow-y:auto;padding:14px;min-height:100px;max-height:240px">'
+    +(msgs||'<div style="color:#6b7280;font-size:0.8rem;text-align:center;padding:24px 12px">I know your '+(context==='world'?'world settings, lore, and rules':'world and character details')+'.<br>Ask me anything.</div>')
+    +(state.vesperThinking?'<div style="display:flex;gap:8px;align-items:flex-start"><div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:linear-gradient(135deg,#7c3aed,#ec4899)">V</div><div style="padding:10px 12px;border-radius:12px;font-size:0.82rem;background:rgba(124,58,237,0.18);color:#a78bfa">thinking...</div></div>':'')
+    +'</div>'
+    // Input row
+    +'<div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px">'
+    +'<input id="vesper-input" type="text" placeholder="'+placeholder+'" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;color:white;font-size:0.8rem;outline:none" />'
+    +'<button id="btn-vesper-send" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:9px 16px;border-radius:10px;font-size:0.82rem;font-weight:700;cursor:pointer">Send</button>'
+    +'</div>'
     +'</div>';
-  if (cc.issues && cc.issues.length > 0) {
-    html += '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.07)">'
-      +'<div style="font-size:0.8rem;font-weight:600;color:#f87171;margin-bottom:8px">⚠️ Issues Found</div>'
-      + cc.issues.map(function(i){ return '<div style="margin-bottom:8px;padding:10px;border-radius:8px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2)">'
-        +'<div style="font-size:0.8rem;color:#fca5a5;font-weight:600;margin-bottom:2px">'+i.field+'</div>'
-        +'<div style="font-size:0.78rem;color:#d1d5db;margin-bottom:4px">'+i.problem+'</div>'
-        +'<div style="font-size:0.75rem;color:#9ca3af">💡 '+i.suggestion+'</div>'
-        +'</div>'; }).join('')
-      +'</div>';
-  }
-  if (cc.strengths && cc.strengths.length > 0) {
-    html += '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,0.07)">'
-      +'<div style="font-size:0.8rem;font-weight:600;color:#4ade80;margin-bottom:8px">✅ What works well</div>'
-      + cc.strengths.map(function(s){ return '<div style="font-size:0.78rem;color:#d1d5db;margin-bottom:4px">• '+s+'</div>'; }).join('')
-      +'</div>';
-  }
-  html += '</div>';
-  return html;
+
+  return panel + toggleBtn;
 }
 
-function stepTipHtml() {
-  if (!state.aiTip) return '';
-  return '<div style="margin-bottom:16px;padding:12px 14px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);display:flex;gap:10px;align-items:flex-start">'
-    +'<span style="font-size:1.1rem;flex-shrink:0">💡</span>'
-    +'<div style="font-size:0.8rem;color:#c084fc;line-height:1.5">'+state.aiTip+'</div>'
-    +'<button onclick="state.aiTip=null;render();" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1rem;flex-shrink:0;padding:0">×</button>'
-    +'</div>';
+function attachVesperEvents(context) {
+  // Toggle button (open/close)
+  document.querySelectorAll('#btn-vesper-toggle').forEach(function(toggle) {
+    toggle.addEventListener('click', function() {
+      state.vesperOpen = !state.vesperOpen;
+      render(); setTimeout(scrollVesper, 50);
+    });
+  });
+  // Send button & input
+  var sendBtn = document.getElementById('btn-vesper-send');
+  var inp = document.getElementById('vesper-input');
+  if (sendBtn && inp) {
+    var doSend = function() {
+      var q = inp.value.trim(); if (!q) return;
+      state.vesperMessages.push({ role:'user', content: q });
+      inp.value = '';
+      state.vesperThinking = true; render(); scrollVesper();
+      askVesper(q, context);
+    };
+    sendBtn.addEventListener('click', doSend);
+    inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSend(); });
+  }
+  // Quick-prompt chips
+  document.querySelectorAll('.vesper-chip').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var q = btn.dataset.q;
+      state.vesperMessages.push({ role:'user', content: q });
+      state.vesperThinking = true; render(); setTimeout(scrollVesper, 50);
+      askVesper(q, context);
+    });
+  });
+}
+
+function scrollVesper() {
+  var el = document.getElementById('vesper-msgs');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+async function askVesper(question, context) {
+  var sys, ctx;
+  if (context === 'world') {
+    var w = state.draftWorld;
+    ctx = 'World being created:\nName: '+(w.name||'unnamed')+'\nSetting: '+(w.setting||'?')+'\nClimate: '+(w.climate||'?')+'\nMagic Level: '+(w.magic_level||'?')+'\nTechnology: '+(w.technology_level||'?')+'\nDanger: '+(w.danger_level||'?')+'\nDescription: '+(w.description||'')+'\nLore: '+(w.lore||'')+'\nFactions: '+(w.factions||'')+'\nLandmarks: '+(w.landmarks||'')+'\nNature Rules: '+(w.rules_of_nature||'');
+    sys = 'You are Vesper, a creative world-building consultant embedded in a god-game called Aurora. You help the player design a coherent, interesting world. You know their world\'s current state and can flag inconsistencies, suggest creative additions, or answer questions about whether ideas fit. Be direct, specific, and concise. Max 3 sentences unless more is needed for lists.';
+  } else {
+    var w = state.currentWorld || {};
+    var c = state.draftChar;
+    ctx = 'World context:\nName: '+(w.name||'?')+'\nSetting: '+(w.setting||'?')+'\nMagic Level: '+(w.magic_level||'?')+'\nTechnology: '+(w.technology_level||'?')+'\nLore: '+(w.lore||'')+'\nNature Rules: '+(w.rules_of_nature||'')+'\n\nCharacter being created:\nName: '+(c.name||'unnamed')+'\nClass: '+(c.class||'?')+'\nLevel: '+(c.level||1)+'\nBackstory: '+(c.backstory||'')+'\nAbilities: '+(c.abilities||'')+'\nInventory: '+(c.inventory||'')+'\nAlignment: '+(c.alignment||'');
+    sys = 'You are Vesper, a creative character consultant in a god-game called Aurora. You help players design characters that fit their world. You know the world\'s lore and rules. If a player describes armor, abilities, or items that don\'t fit the world\'s magic level or setting, flag the conflict and suggest a lore-consistent alternative. Be warm, direct, and specific. Max 3 sentences unless listing alternatives.';
+  }
+  try {
+    var reply = await callAI(sys, ctx + '\n\nPlayer asks: ' + question, 300);
+    state.vesperMessages.push({ role:'assistant', content: reply });
+  } catch(e) {
+    state.vesperMessages.push({ role:'assistant', content: 'Sorry, I couldn\'t reach the AI right now. Check your API key.' });
+  }
+  state.vesperThinking = false; render(); setTimeout(scrollVesper, 50);
 }
 
 async function aiAssistWorld(type) {
@@ -584,7 +627,7 @@ var ALIGNMENTS = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','
 var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Experience Mode'];
 var WORLD_ICONS = ['🌍','🌿','⚔️','📜','✨'];
 var CHAR_STEPS = ['Identity','Backstory','Stats','Abilities','Alignment'];
-var CHAR_ICONS = ['\U0001f464','\U0001f4dc','\U0001f4ca','\u26a1','\u2696\ufe0f'];
+var CHAR_ICONS = ['👤','📜','📊','⚡','⚖️'];
 
 var COMBAT_ACTIONS = [
   {label:'Slash',icon:'⚔️',type:'combat'},{label:'Dodge & Strike',icon:'🌀',type:'combat'},
@@ -765,6 +808,7 @@ function render() {
   if (state.screen==='home') { root.innerHTML = renderHome(); attachHomeEvents(); return; }
   if (state.screen==='worlds') { root.innerHTML = renderWorlds(); attachWorldsEvents(); return; }
   if (state.screen==='createWorld') { root.innerHTML = renderCreateWorld(); attachCreateWorldEvents(); return; }
+  if (state.screen==='importWorld') { root.innerHTML = renderImportWorld(); attachImportWorldEvents(); return; }
   if (state.screen==='worldDetail') { root.innerHTML = renderWorldDetail(); attachWorldDetailEvents(); return; }
   if (state.screen==='createChar') { root.innerHTML = renderCreateChar(); attachCreateCharEvents(); return; }
   if (state.screen==='play') { root.innerHTML = renderPlay(); attachPlayEvents(); return; }
@@ -788,6 +832,66 @@ function attachKeyEvents() {
   if (inp) inp.addEventListener('keydown', function(e){if(e.key==='Enter')btn&&btn.click();});
 }
 
+async function importFictionalWorld(query) {
+  state.importing = true; state.importError = null; render();
+
+  var sys = `You are Vesper, a lore expert and world-building engine for a god-game called Aurora. Your task is to reconstruct a fictional universe with maximum canon accuracy — as if you are the author writing a game adaptation sourcebook. Do NOT invent generic fantasy details. Use REAL names, places, events, and mechanics from the source material.
+
+RULES:
+- name: Use the canonical world/setting name (e.g. "Middle-earth", "Westeros", "The Wizarding World of Harry Potter", "The Continent" for The Witcher)
+- description: 3-4 sentences. Describe the world as a reader/viewer would recognize it — tone, feel, defining features, era. Name-drop iconic real elements.
+- setting: The genre + physical nature of the world (e.g. "High Fantasy continent divided into Seven Kingdoms", "Desert planet Arrakis in a feudal interstellar empire", "Medieval Central European archipelago of monster-infested kingdoms")
+- climate: Real climates from canon (e.g. "Frozen North beyond the Wall, arid Dorne, fertile Reach, tropical Summer Isles")
+- magic_level: One of None|Low|Medium|High|Extreme — based on how central and powerful magic is in the story
+- technology_level: One of None|Low|Medium|High|Extreme — based on actual tech in the universe
+- danger_level: One of None|Low|Medium|High|Extreme — how lethal the world is for an average person
+- population_density: One of Sparse|Moderate|Dense|Crowded
+- lore: This is the MOST important field. 6-8 sentences minimum. Include: world origin myth or creation history, major historical wars or cataclysms, current political state, what drives conflict today, key canon events (named), the stakes. Name actual places, people, and events from the source. No vague summaries.
+- factions: List 5-8 REAL named factions/houses/organizations from canon. For each: name, brief description, their goal or role. Format: "Name — description. Goal: X"
+- landmarks: List 5-8 REAL named locations from canon. For each: name, what it is, why it matters. Format: "Name — description"
+- rules_of_nature: Describe the actual magic system or power rules from canon (spells, the Force, Haki, chakra, Allomancy, etc.), any unique physics or biology, what governs death/life, gods or cosmic forces. Be specific — name the systems and their real rules.
+
+Return ONLY a valid JSON object. No markdown fences, no extra text.`;
+
+  var prompt = 'Generate a full canon-accurate Aurora world profile for: "' + query + '". Use real names, places, and lore from the actual source material. Return ONLY a JSON object.';
+
+  try {
+    var raw = await callAI(sys, prompt, 1400);
+    var cleaned = raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim();
+    // Sometimes the model wraps in extra text — extract the JSON object
+    var jsonStart = cleaned.indexOf('{');
+    var jsonEnd = cleaned.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) cleaned = cleaned.slice(jsonStart, jsonEnd+1);
+    var json = JSON.parse(cleaned);
+    // Validate magic/tech/danger levels
+    var levels = ['None','Low','Medium','High','Extreme'];
+    var densities = ['Sparse','Moderate','Dense','Crowded'];
+    state.draftWorld = {
+      name: json.name || query,
+      description: json.description || '',
+      setting: json.setting || '',
+      climate: json.climate || '',
+      magic_level: levels.indexOf(json.magic_level) !== -1 ? json.magic_level : 'Medium',
+      technology_level: levels.indexOf(json.technology_level) !== -1 ? json.technology_level : 'Low',
+      danger_level: levels.indexOf(json.danger_level) !== -1 ? json.danger_level : 'Medium',
+      population_density: densities.indexOf(json.population_density) !== -1 ? json.population_density : 'Moderate',
+      lore: json.lore || '',
+      factions: json.factions || '',
+      landmarks: json.landmarks || '',
+      rules_of_nature: json.rules_of_nature || '',
+    };
+    state.importing = false;
+    state.screen = 'createWorld';
+    state.worldStep = 0;
+    state.importQuery = '';
+    state.aiSuggestion = null;
+  } catch(e) {
+    state.importing = false;
+    state.importError = 'Could not parse world data. Try a more specific title, e.g. "Lord of the Rings" or "Naruto". (' + e.message + ')';
+  }
+  render();
+}
+
 function renderHome() {
   return '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;background:linear-gradient(135deg,#030712,#1a0535,#030712)">'
     +'<div style="font-size:5rem;margin-bottom:24px" class="pulse">🌌</div>'
@@ -796,15 +900,97 @@ function renderHome() {
     +'<p style="color:#6b7280;margin-bottom:40px">Design a world. Enter it. Shape its story forever.</p>'
     +'<div style="display:flex;flex-direction:column;gap:16px;width:100%;max-width:18rem">'
     +'<button id="btn-play" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter a World</button>'
-    +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'
+    +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'+'<button id="btn-import-world" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">📚 Import a Fictional World</button>'
     +'<button id="btn-key" style="background:none;border:none;color:#6b7280;font-size:0.75rem;cursor:pointer;margin-top:8px">🔑 Change API Key</button>'
     +'</div></div>';
 }
+function renderImportWorld() {
+  var cats = [
+    { id:'books', label:'\U0001f4d6 Books', color:'#60a5fa', items:['Lord of the Rings','Dune','Harry Potter','Narnia','The Wheel of Time','A Song of Ice and Fire','The Name of the Wind','Mistborn','The Stormlight Archive','Discworld','His Dark Materials','The Witcher Saga','Eragon','The Silmarillion','Conan the Barbarian'] },
+    { id:'movies', label:'\U0001f3a5 Movies & TV', color:'#f472b6', items:['Star Wars','Game of Thrones','The Witcher','Avatar: The Last Airbender','The Mandalorian','House of the Dragon','Stranger Things','Vikings','Outlander','The Last Kingdom','Black Sails','Spartacus','Merlin','Shadow and Bone','The Wheel of Time (Amazon)'] },
+    { id:'anime', label:'\u2728 Anime & Manga', color:'#fb923c', items:['Attack on Titan','One Piece','Naruto','Demon Slayer','Fullmetal Alchemist','My Hero Academia','Bleach','Sword Art Online','Re:Zero','That Time I Got Reincarnated as a Slime','Black Clover','Overlord','Mushoku Tensei','Goblin Slayer','Made in Abyss'] },
+    { id:'games', label:'\U0001f3ae Games', color:'#34d399', items:['The Elder Scrolls (Skyrim)','The Witcher 3','Elden Ring','Dark Souls','Final Fantasy XIV','World of Warcraft','Dragon Age','Mass Effect','Baldur\'s Gate','Divinity: Original Sin','Guild Wars 2','Pathfinder','Dungeons & Dragons (Forgotten Realms)','Monster Hunter','God of War'] },
+  ];
+  var active = state.importCategory || 'books';
+  var activeCat = cats.filter(function(c){return c.id===active;})[0] || cats[0];
+
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#1a0535,#030712);padding:0 0 60px 0;overflow-y:auto">'
+    // Back
+    +'<button id="btn-back-home" style="position:fixed;top:16px;left:16px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#9ca3af;cursor:pointer;font-size:0.85rem;padding:6px 12px;z-index:50">\u2190 Back</button>'
+    // Header
+    +'<div style="text-align:center;padding:48px 16px 28px">'
+    +'<div style="font-size:2.8rem;margin-bottom:10px">\U0001f4da</div>'
+    +'<h1 style="font-size:2rem;font-weight:900;background:linear-gradient(to right,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px">Import a Fictional World</h1>'
+    +'<p style="color:#9ca3af;font-size:0.9rem">Choose a universe below or type any title — Vesper will build it for you.</p>'
+    +'</div>'
+    // Search bar (sticky-ish at top of content)
+    +'<div style="max-width:38rem;margin:0 auto 24px;padding:0 16px">'
+    +'<div style="display:flex;gap:10px">'
+    +'<input id="import-query" type="text" placeholder="Type any book, show, game, anime..." value="'+esc(state.importQuery)+'" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(124,58,237,0.45);border-radius:12px;padding:13px 16px;color:white;font-size:0.95rem;outline:none" />'
+    +'<button id="btn-do-import" '+(state.importing?'disabled ':'')+' style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:13px 22px;border-radius:12px;font-size:0.9rem;font-weight:700;cursor:pointer;white-space:nowrap;opacity:'+(state.importing?'0.65':'1')+'">'
+    +(state.importing?'\u23f3 Generating...':'\u2728 Import')+'</button>'
+    +'</div>'
+    +(state.importError?'<p style="color:#f87171;font-size:0.82rem;margin-top:10px;padding:10px 14px;background:rgba(239,68,68,0.1);border-radius:8px;border:1px solid rgba(239,68,68,0.2)">'+state.importError+'</p>':'')
+    +'</div>'
+    // Category tabs
+    +'<div style="max-width:38rem;margin:0 auto;padding:0 16px">'
+    +'<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">'
+    +cats.map(function(c){
+      var isActive = c.id===active;
+      return '<button class="cat-tab" data-cat="'+c.id+'" style="padding:8px 16px;border-radius:20px;font-size:0.82rem;font-weight:600;cursor:pointer;border:1px solid '+(isActive?c.color:'rgba(255,255,255,0.12)')+';background:'+(isActive?'rgba('+hexToRgb(c.color)+',0.18)':'rgba(255,255,255,0.04)')+';color:'+(isActive?c.color:'#9ca3af')+';transition:all 0.15s">'+c.label+'</button>';
+    }).join('')
+    +'</div>'
+    // World list for active category
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:32px">'
+    +activeCat.items.map(function(w,i){
+      return '<button class="world-pick" data-world="'+w+'" style="text-align:left;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#e5e7eb;font-size:0.85rem;cursor:pointer;font-weight:500;transition:all 0.15s;display:flex;align-items:center;gap:8px">'
+        +'<span style="font-size:1.1rem;opacity:0.7">'+(i%5===0?'\U0001f30c':i%5===1?'\u2728':i%5===2?'\U0001f5fa\ufe0f':i%5===3?'\u26a1':'\U0001f3f9')+'</span>'
+        +w+'</button>';
+    }).join('')
+    +'</div>'
+    +'<p style="font-size:0.75rem;color:#374151;text-align:center">After import you can review and tweak every detail before entering.</p>'
+    +'</div></div>';
+}
+
+function hexToRgb(hex) {
+  var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return r+','+g+','+b;
+}
+
+function attachImportWorldEvents() {
+  var back = document.getElementById('btn-back-home');
+  if (back) back.addEventListener('click', function() { state.screen='home'; state.importError=null; render(); });
+  var inp = document.getElementById('import-query');
+  if (inp) inp.addEventListener('input', function() { state.importQuery = inp.value; });
+  var doImport = function() {
+    var q = state.importQuery.trim() || (inp ? inp.value.trim() : '');
+    if (!q || state.importing) return;
+    state.importQuery = q;
+    importFictionalWorld(q);
+  };
+  var btn = document.getElementById('btn-do-import');
+  if (btn) btn.addEventListener('click', doImport);
+  if (inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') doImport(); });
+  document.querySelectorAll('.world-pick').forEach(function(b){
+    b.addEventListener('click', function(){
+      state.importQuery = b.dataset.world;
+      importFictionalWorld(b.dataset.world);
+    });
+  });
+  document.querySelectorAll('.cat-tab').forEach(function(b){
+    b.addEventListener('click', function(){
+      state.importCategory = b.dataset.cat;
+      render();
+    });
+  });
+}
+
 function attachHomeEvents() {
-  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key');
+  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world');
   if(bp) bp.addEventListener('click',function(){state.screen='worlds';render();});
   if(bc) bc.addEventListener('click',function(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();});
   if(bk) bk.addEventListener('click',function(){state.apiKey='';localStorage.removeItem(KEY_STORE);render();});
+  if(bi) bi.addEventListener('click',function(){state.screen='importWorld';state.importError=null;state.importQuery='';render();});
 }
 
 function renderWorlds() {
@@ -877,7 +1063,7 @@ function renderCreateWorld() {
       +'<textarea id="world-rules" placeholder="How does magic work? Are there gods?" rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.rules_of_nature)+'</textarea>'
       +(state.aiSuggestionField==='rules_of_nature'?suggestionBox():'')+'</div>';
   } else if(step===4){
-    var ccBtn='<button id="btn-consistency-check" style="margin-bottom:16px;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;font-size:0.875rem;font-weight:600;cursor:pointer">🔍 Check World Consistency</button>';
+    var ccBtn='<button id="btn-consistency-check" style="margin:12px 0;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;font-size:0.875rem;font-weight:600;cursor:pointer">Check World Consistency</button>';
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Experience Mode</h2><p style="color:#9ca3af;margin-bottom:24px">How will you live in this world?</p>'
       +'<div style="display:flex;flex-direction:column;gap:16px">'
       +[{id:'Narrative',icon:'📖',title:'Narrative Mode',desc:'AI-driven text adventure. Your words shape the story. Cinematic, immersive, unpredictable.',d:false},{id:'Visual',icon:'🎮',title:'Visual Mode',desc:'Coming soon — 2D world exploration.',d:true}].map(function(m){
@@ -895,29 +1081,25 @@ function renderCreateWorld() {
     +stepBarHtml(WORLD_STEPS,WORLD_ICONS,step)
     +'</div>'
     +'<div style="max-width:42rem;margin:0 auto;padding:40px 24px">'+stepTipHtml()+content
-    +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:40px">'
     +(step>0?'<button id="btn-prev-step" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
     +(step<4?'<button id="btn-next-step" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
        :'<button id="btn-save-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Create World</button>')
-    +'</div></div></div>';
+    +vesperChatHtml('world')+'</div></div></div>';
 }
 function attachCreateWorldEvents() {
   var bback=document.getElementById('btn-back-worlds'),bprev=document.getElementById('btn-prev-step'),bnext=document.getElementById('btn-next-step'),bsave=document.getElementById('btn-save-world');
   if(bback) bback.addEventListener('click',function(){state.screen='worlds';render();});
   if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
-  if(bnext) bnext.addEventListener('click',function(){
-    collectWorldStep();
-    if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}
-    state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();
-    fetchStepTip();
-  });
+  if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
   if(bsave) bsave.addEventListener('click',function(){collectWorldStep();var w=Object.assign({},state.draftWorld,{id:Date.now().toString(),status:'Active',created_date:new Date().toISOString()});state.worlds.push(w);save();state.currentWorld=w;state.screen='worldDetail';render();});
   document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld[b.dataset.field]=b.dataset.val;render();});});
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
   document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
   document.querySelectorAll('.ai-assist-btn').forEach(function(b){b.addEventListener('click',function(){collectWorldStep();aiAssistWorld(b.dataset.assistType);});});
   var bcc=document.getElementById('btn-consistency-check');
-  if(bcc) bcc.addEventListener('click',function(){ runConsistencyCheck(); });
+  if(bcc) bcc.addEventListener('click',function(){runConsistencyCheck();});
+  attachVesperEvents('world');
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
   if(bd) bd.addEventListener('click',function(){state.aiSuggestion=null;state.aiSuggestionField=null;render();});
@@ -977,187 +1159,122 @@ function attachWorldDetailEvents() {
 }
 
 function renderCreateChar() {
-  var step=state.charStep, c=state.draftChar, body='';
-  var STAT_LIST = ['STR','DEX','CON','INT','WIS','CHA'];
-
+  var step=state.charStep,c=state.draftChar,body='',STAT_LIST=['STR','DEX','CON','INT','WIS','CHA'];
   if(step===0){
-    // ── Identity: name, class, level, preset ──────────────────────────────
-    var presetBtns = Object.keys(CLASS_PRESETS).map(function(cls){
-      var p=CLASS_PRESETS[cls], sel=c.class===cls;
-      return '<button class="preset-btn" data-cls="'+cls+'" style="padding:12px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.03)')+';text-align:left;cursor:pointer;transition:all 0.2s">'
-        +'<div style="font-weight:700;font-size:0.9rem;color:'+(sel?'#c084fc':'#e5e7eb')+'">'+cls+'</div>'
-        +'<div style="font-size:0.72rem;color:#9ca3af;margin-top:2px">'+p.desc+'</div>'
-        +'</button>';
-    }).join('');
-    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Who are you?</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:20px">Name, level and class.</p>'
+    var pb=Object.keys(CLASS_PRESETS).map(function(cls){var p=CLASS_PRESETS[cls],sel=c.class===cls;return '<button class="preset-btn" data-cls="'+cls+'" style="padding:12px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.03)')+';text-align:left;cursor:pointer"><div style="font-weight:700;font-size:0.9rem;color:'+(sel?'#c084fc':'#e5e7eb')+'">'+cls+'</div><div style="font-size:0.72rem;color:#9ca3af;margin-top:2px">'+p.desc+'</div></button>';}).join('');
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Who are you?</h2><p style="color:#9ca3af;margin-bottom:20px">Name, level and class.</p>'
       +'<input id="char-name" type="text" placeholder="Character name..." value="'+esc(c.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:16px;outline:none" />'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:6px">Character Level</label>'
-      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">'
-      +'<input id="char-level" type="range" min="1" max="100" value="'+(c.level||1)+'" style="flex:1;accent-color:#9333ea" />'
-      +'<span id="level-display" style="font-weight:700;font-size:1.1rem;color:#c084fc;min-width:60px">Lv '+(c.level||1)+'</span>'
-      +'</div>'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:10px">Choose Class (or start from a preset)</label>'
-      +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'+presetBtns+'</div>';
-
+      +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px"><input id="char-level" type="range" min="1" max="100" value="'+(c.level||1)+'" style="flex:1;accent-color:#9333ea" /><span id="level-display" style="font-weight:700;font-size:1.1rem;color:#c084fc;min-width:60px">Lv '+(c.level||1)+'</span></div>'
+      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:10px">Choose a Class Preset</label>'
+      +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'+pb+'</div>';
   } else if(step===1){
-    // ── Backstory ──────────────────────────────────────────────────────────
-    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:24px">Where did you come from? What drives you?</p>'
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2><p style="color:#9ca3af;margin-bottom:24px">Where did you come from?</p>'
       +'<textarea id="char-backstory" rows="6" placeholder="History, motivation, secrets..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.backstory)+'</textarea>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Location</label>'
       +'<input id="char-location" type="text" placeholder="Where does your story begin?" value="'+esc(c.current_location)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;outline:none" />';
-
   } else if(step===2){
-    // ── Stats ──────────────────────────────────────────────────────────────
-    var stats = c.stats || {STR:50,DEX:50,CON:50,INT:50,WIS:50,CHA:50};
-    var mastery = c.mastery || {STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10};
-    var statRows = STAT_LIST.map(function(s){
-      var v=stats[s]||50, m=mastery[s]||10;
-      var g=statGrade(v), mg=statGrade(m), gc=statColor(g), mc=statColor(mg);
-      return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px;margin-bottom:10px">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-        +'<span style="font-weight:700;font-size:0.9rem;letter-spacing:0.05em">'+s+'</span>'
-        +'<div style="display:flex;gap:16px;align-items:center">'
-        +'<span style="font-size:0.75rem;color:#9ca3af">Value <strong style="color:'+gc+'">'+v+' ('+g+')</strong></span>'
-        +'<span style="font-size:0.75rem;color:#9ca3af">Mastery <strong style="color:'+mc+'">'+m+' ('+mg+')</strong></span>'
-        +'</div></div>'
-        // Stat slider
-        +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        +'<span style="font-size:0.7rem;color:#6b7280;width:48px">Stat</span>'
-        +'<input class="stat-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+v+'" style="flex:1;accent-color:#9333ea" />'
-        +'</div>'
-        // Mastery slider  
-        +'<div style="display:flex;align-items:center;gap:8px">'
-        +'<span style="font-size:0.7rem;color:#6b7280;width:48px">Mastery</span>'
-        +'<input class="mastery-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+m+'" style="flex:1;accent-color:#a855f7" />'
-        +'</div></div>';
-    }).join('');
-    var lv=c.level||1;
-    var mBase=masteryStart(lv);
-    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Stats & Mastery</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:6px">Grades: E (10-40) · D (41-70) · C (71-110) · B (111-150) · A (151-200)</p>'
-      +'<div style="background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.8rem;color:#c084fc">'
-      +'&#9432; Level '+lv+' character — mastery starts at <strong>'+mBase+'</strong> ('+statGrade(mBase)+'-grade). Mastery grows through gameplay.'
-      +'</div>'
-      +statRows;
-
+    var stats=c.stats||{STR:50,DEX:50,CON:50,INT:50,WIS:50,CHA:50},mastery=c.mastery||{STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10},lv=c.level||1,mBase=masteryStart(lv);
+    var sr=STAT_LIST.map(function(s){var v=stats[s]||50,m=mastery[s]||10,g=statGrade(v),mg=statGrade(m),gc=statColor(g),mc=statColor(mg);return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700;font-size:0.9rem;letter-spacing:0.05em">'+s+'</span><div style="display:flex;gap:16px"><span style="font-size:0.75rem;color:#9ca3af">Val <strong style="color:'+gc+'">'+v+' ('+g+')</strong></span><span style="font-size:0.75rem;color:#9ca3af">Mast <strong style="color:'+mc+'">'+m+' ('+mg+')</strong></span></div></div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:0.7rem;color:#6b7280;width:44px">Stat</span><input class="stat-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+v+'" style="flex:1;accent-color:#9333ea" /></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:0.7rem;color:#6b7280;width:44px">Mastery</span><input class="mastery-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+m+'" style="flex:1;accent-color:#a855f7" /></div></div>';}).join('');
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Stats &amp; Mastery</h2><p style="color:#9ca3af;margin-bottom:6px">E(10-40) D(41-70) C(71-110) B(111-150) A(151-200)</p><div style="background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.8rem;color:#c084fc">Level '+lv+' &mdash; mastery base: <strong>'+mBase+'</strong> ('+statGrade(mBase)+')</div>'+sr;
   } else if(step===3){
-    // ── Abilities & Inventory ──────────────────────────────────────────────
-    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Abilities & Inventory</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:24px">What can you do and what do you carry?</p>'
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Abilities &amp; Inventory</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:12px">What can you do and carry? Ask Vesper to check if it fits your world.</p>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">'
+      +['Does my armor fit the world?','Suggest a lore-consistent ability','Is this too powerful?','Give me a unique weapon idea'].map(function(q){return '<button class="vesper-chip" data-q="'+q+'" style="padding:5px 10px;border-radius:20px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;font-size:0.72rem;cursor:pointer">'+q+'</button>';}).join('')
+      +'</div>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Special Abilities</label>'
       +'<textarea id="char-abilities" rows="4" placeholder="Combat skills, spells, talents..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.abilities)+'</textarea>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
       +'<textarea id="char-inventory" rows="3" placeholder="Items you carry..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
-
   } else if(step===4){
-    // ── Alignment ─────────────────────────────────────────────────────────
-    body = '<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes the world&#39;s reaction to you.</p>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'
-      +ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')
-      +'</div>';
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes how the world reacts to you.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>';
   }
-
-  var isLast = step === CHAR_STEPS.length - 1;
-  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
-    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
-    +'<button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">\u2190 Back</button>'
-    +stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div>'
-    +'<div style="max-width:40rem;margin:0 auto;padding:40px 24px">'+body
-    +'<div style="display:flex;justify-content:space-between;margin-top:40px">'
-    +(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">\u2190 Back</button>':'<div></div>')
-    +(!isLast?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next \u2192</button>'
-             :'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">\u2728 Enter the World</button>')
-    +'</div></div></div>';
+  var isLast=step===CHAR_STEPS.length-1;
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)"><div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px"><button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'+stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div><div style="max-width:40rem;margin:0 auto;padding:40px 24px">'+body+'<div style="display:flex;justify-content:space-between;margin-top:40px">'+(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')+(!isLast?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>':'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter the World</button>')+vesperChatHtml('char')+'</div></div></div>';
 }
 function attachCreateCharEvents() {
-  var bb=document.getElementById('btn-back-char'),
-      bp=document.getElementById('btn-char-prev'),
-      bn=document.getElementById('btn-char-next'),
-      bs=document.getElementById('btn-save-char');
+  var bb=document.getElementById('btn-back-char'),bp=document.getElementById('btn-char-prev'),bn=document.getElementById('btn-char-next'),bs=document.getElementById('btn-save-char');
   if(bb) bb.addEventListener('click',function(){state.screen='worldDetail';render();});
   if(bp) bp.addEventListener('click',function(){collectCharStep();state.charStep--;render();});
-  if(bn) bn.addEventListener('click',function(){
-    collectCharStep();
-    if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}
-    state.charStep++;render();
-  });
-  if(bs) bs.addEventListener('click',function(){
-    collectCharStep();
-    applyMasteryForLevel(state.draftChar);
-    var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});
-    state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();
-  });
-  // Preset class buttons
-  document.querySelectorAll('.preset-btn').forEach(function(b){
-    b.addEventListener('click',function(){
-      var cls=b.dataset.cls, p=CLASS_PRESETS[cls];
-      state.draftChar.class=cls;
-      if(p){ state.draftChar.stats=Object.assign({},p); delete state.draftChar.stats.desc; }
-      render();
-    });
-  });
-  // Alignment buttons
-  document.querySelectorAll('.align-btn').forEach(function(b){
-    b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});
-  });
-  // Level slider
-  var lvSlider=document.getElementById('char-level');
-  var lvDisplay=document.getElementById('level-display');
-  if(lvSlider){
-    lvSlider.addEventListener('input',function(){
-      state.draftChar.level=parseInt(lvSlider.value)||1;
-      if(lvDisplay) lvDisplay.textContent='Lv '+lvSlider.value;
-    });
-  }
-  // Stat sliders
-  document.querySelectorAll('.stat-slider').forEach(function(sl){
-    sl.addEventListener('input',function(){
-      if(!state.draftChar.stats) state.draftChar.stats={};
-      state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;
-      var row=sl.closest('div[style]');
-      if(row){
-        var g=statGrade(parseInt(sl.value));
-        var spans=row.querySelectorAll('strong');
-        if(spans[0]){ spans[0].textContent=sl.value+' ('+g+')'; spans[0].style.color=statColor(g); }
-      }
-    });
-  });
-  // Mastery sliders
-  document.querySelectorAll('.mastery-slider').forEach(function(sl){
-    sl.addEventListener('input',function(){
-      if(!state.draftChar.mastery) state.draftChar.mastery={};
-      state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;
-      var row=sl.closest('div[style]');
-      if(row){
-        var g=statGrade(parseInt(sl.value));
-        var spans=row.querySelectorAll('strong');
-        if(spans[1]){ spans[1].textContent=sl.value+' ('+g+')'; spans[1].style.color=statColor(g); }
-      }
+  if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();});
+  if(bs) bs.addEventListener('click',function(){collectCharStep();applyMasteryForLevel(state.draftChar);var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
+  document.querySelectorAll('.preset-btn').forEach(function(b){b.addEventListener('click',function(){var cls=b.dataset.cls,p=CLASS_PRESETS[cls];state.draftChar.class=cls;if(p){var st={};['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){st[s]=p[s]||50;});state.draftChar.stats=st;}render();});});
+  document.querySelectorAll('.align-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});});
+  var lvS=document.getElementById('char-level'),lvD=document.getElementById('level-display');
+  if(lvS){lvS.addEventListener('input',function(){state.draftChar.level=parseInt(lvS.value)||1;if(lvD)lvD.textContent='Lv '+lvS.value;});}
+  document.querySelectorAll('.stat-slider').forEach(function(sl){sl.addEventListener('input',function(){if(!state.draftChar.stats)state.draftChar.stats={};state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;});});
+  document.querySelectorAll('.mastery-slider').forEach(function(sl){sl.addEventListener('input',function(){if(!state.draftChar.mastery)state.draftChar.mastery={};state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;});});
+  attachVesperEvents('char');
+  document.querySelectorAll('.vesper-chip').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      state.vesperOpen=true;render();
+      setTimeout(function(){
+        var inp=document.getElementById('vesper-input');
+        if(inp){inp.value=btn.dataset.q;}
+        var send=document.getElementById('btn-vesper-send');
+        if(send) send.click();
+      },100);
     });
   });
 }
 function collectCharStep() {
-  var n=document.getElementById('char-name'); if(n) state.draftChar.name=n.value;
-  var b=document.getElementById('char-backstory'); if(b) state.draftChar.backstory=b.value;
-  var l=document.getElementById('char-location'); if(l) state.draftChar.current_location=l.value;
-  var a=document.getElementById('char-abilities'); if(a) state.draftChar.abilities=a.value;
-  var iv=document.getElementById('char-inventory'); if(iv) state.draftChar.inventory=iv.value;
-  var lv=document.getElementById('char-level'); if(lv) state.draftChar.level=parseInt(lv.value)||1;
-  document.querySelectorAll('.stat-slider').forEach(function(sl){
-    if(!state.draftChar.stats) state.draftChar.stats={};
-    state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;
-  });
-  document.querySelectorAll('.mastery-slider').forEach(function(sl){
-    if(!state.draftChar.mastery) state.draftChar.mastery={};
-    state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;
+  var n=document.getElementById('char-name');if(n)state.draftChar.name=n.value;
+  var b=document.getElementById('char-backstory');if(b)state.draftChar.backstory=b.value;
+  var l=document.getElementById('char-location');if(l)state.draftChar.current_location=l.value;
+  var a=document.getElementById('char-abilities');if(a)state.draftChar.abilities=a.value;
+  var iv=document.getElementById('char-inventory');if(iv)state.draftChar.inventory=iv.value;
+  var lv=document.getElementById('char-level');if(lv)state.draftChar.level=parseInt(lv.value)||1;
+  document.querySelectorAll('.stat-slider').forEach(function(sl){if(!state.draftChar.stats)state.draftChar.stats={};state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;});
+  document.querySelectorAll('.mastery-slider').forEach(function(sl){if(!state.draftChar.mastery)state.draftChar.mastery={};state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;});
+}
+
+function renderWorldDetail() {
+  var w=state.currentWorld;
+  var chars=state.characters.filter(function(c){return c.world_id===w.id;});
+  var DC={Peaceful:'#4ade80',Low:'#60a5fa',Medium:'#facc15',High:'#fb923c',Extreme:'#f87171'};
+  var charCards=chars.length===0
+    ?'<p style="color:#6b7280;margin-bottom:16px">No characters yet. Create one to enter this world.</p>'
+    :chars.map(function(c,i){
+        return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px">'
+          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><h3 style="font-size:1.125rem;font-weight:700">'+esc(c.name)+'</h3><span style="font-size:0.75rem;background:rgba(147,51,234,0.2);color:#c084fc;padding:4px 10px;border-radius:9999px">'+esc(c.class)+'</span></div>'
+          +'<p style="color:#9ca3af;font-size:0.875rem;margin-bottom:12px">'+esc((c.backstory||'No backstory.').slice(0,100))+'</p>'
+          +'<div style="display:flex;gap:12px;font-size:0.75rem;color:#6b7280;margin-bottom:16px"><span>❤️ '+c.health+'/100</span><span>⭐ Lv.'+c.level+'</span><span>'+esc(c.alignment)+'</span></div>'
+          +'<button class="enter-world-btn" data-char-i="'+i+'" style="width:100%;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:10px;border-radius:12px;font-weight:600;font-size:0.875rem;cursor:pointer">📖 Enter World</button>'
+          +'</div>';
+      }).join('');
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div style="display:flex;align-items:center;gap:16px"><button id="btn-back-to-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Worlds</button>'
+    +'<div><h1 style="font-size:1.5rem;font-weight:700">'+esc(w.name)+'</h1><p style="color:#9ca3af;font-size:0.875rem">'+w.setting+' · '+w.climate+' · '+w.danger_level+' danger</p></div></div>'
+    +'<button id="btn-create-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer">+ New Character</button>'
+    +'</div>'
+    +'<div style="max-width:48rem;margin:0 auto;padding:40px 24px">'
+    +(w.description?'<p style="color:#d1d5db;font-size:1.125rem;margin-bottom:32px">'+esc(w.description)+'</p>':'')
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:40px">'
+    +[['Magic',w.magic_level,'#c084fc'],['Tech',w.technology_level,'#60a5fa'],['Danger',w.danger_level,DC[w.danger_level]||'white'],['Population',w.population_density,'#4ade80']].map(function(x){
+      return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center"><div style="font-size:0.75rem;color:#6b7280;margin-bottom:4px">'+x[0]+'</div><div style="font-weight:700;color:'+x[2]+'">'+x[1]+'</div></div>';
+    }).join('')+'</div>'
+    +(w.lore?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">📜 Lore</h3><p style="color:#d1d5db;font-size:0.875rem;line-height:1.6">'+esc(w.lore)+'</p></div>':'')
+    +(w.factions?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">⚔️ Factions</h3><p style="color:#d1d5db;font-size:0.875rem">'+esc(w.factions)+'</p></div>':'')
+    +'<h2 style="font-size:1.25rem;font-weight:700;margin-bottom:16px">Characters</h2>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">'+charCards+'</div>'
+    +'</div></div>';
+}
+function attachWorldDetailEvents() {
+  var b=document.getElementById('btn-back-to-worlds'),c=document.getElementById('btn-create-char');
+  if(b) b.addEventListener('click',function(){state.screen='worlds';render();});
+  if(c) c.addEventListener('click',function(){state.screen='createChar';state.charStep=0;state.draftChar=freshChar(state.currentWorld.id,state.currentWorld.name);render();});
+  document.querySelectorAll('.enter-world-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var chars=state.characters.filter(function(c){return c.world_id===state.currentWorld.id;});
+      state.currentChar=chars[parseInt(btn.dataset.charI)];
+      state.screen='play'; startGame();
+    });
   });
 }
 
 
-// ---- Campaign Journal Panel ----
 function renderJournal() {
   var attC = {friendly:'#4ade80',neutral:'#facc15',hostile:'#f87171'};
   var questC = {active:'#60a5fa',completed:'#4ade80',failed:'#f87171'};
