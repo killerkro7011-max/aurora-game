@@ -4,10 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Aurora — God Sandbox Game</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<!-- Tailwind removed: using inline styles -->
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #030712; color: white; font-family: system-ui, sans-serif; }
+  body { margin: 0; background: #030712 !important; color: white; font-family: system-ui, sans-serif; }
   textarea { resize: none; }
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -21,7 +21,7 @@
   .pulse{animation:pulse2 1.5s infinite}
 </style>
 </head>
-<body>
+<body style="margin:0;background:#030712;color:white;font-family:system-ui,sans-serif">
 <div id="root"></div>
 <script>
 // ============================================================
@@ -2152,7 +2152,8 @@ function attachPlayEvents() {
 }
 
 // ---- Boot ----
-try { render(); } catch(e) { document.getElementById('root').innerHTML = '<div style="color:red;padding:20px;font-family:monospace">BOOT ERROR: ' + e.message + '<br>' + e.stack + '</div>'; }
+// ---- Boot ----
+render();
 </script>
 </body>
 </html>
