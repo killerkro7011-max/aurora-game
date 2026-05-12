@@ -387,7 +387,7 @@ function buildSystemPrompt() {
     + '- Name: ' + c.name + ' | Class: ' + c.class + ' | Alignment: ' + c.alignment + '\n'
     + '- Backstory: ' + (c.backstory || 'A mysterious past.') + '\n'
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
-    + '- Inventory: ' + c.inventory + '\n'
+    + '- Inventory (' + (state.gold||0) + 'g gold): ' + (function(){var inv=state.currentChar&&state.currentChar.inventoryItems?state.currentChar.inventoryItems:[];if(inv.length===0)return c.inventory||'Basic supplies';var eq=inv.filter(function(i){return i.equipped;}).map(function(i){return i.name+'[E]';});var un=inv.filter(function(i){return !i.equipped;}).map(function(i){return i.name+(i.qty>1?'x'+i.qty:'');});return (eq.length?'Equipped: '+eq.join(', ')+'. ':'')+(un.length?'Carrying: '+un.join(', '):'');})() + '\n'
     + '- Location: ' + (c.current_location || w.name) + '\n'
     + '- Stats: STR ' + (c.stats.STR||50) + '(' + statGrade(c.stats.STR||50) + ') DEX ' + (c.stats.DEX||50) + '(' + statGrade(c.stats.DEX||50) + ') INT ' + (c.stats.INT||50) + '(' + statGrade(c.stats.INT||50) + ') CHA ' + (c.stats.CHA||50) + '(' + statGrade(c.stats.CHA||50) + ') SMY ' + (c.stats.SMY||50) + '(' + statGrade(c.stats.SMY||50) + ')\n'
     + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + ' | Mode: ' + (c.progression_mode==='legend'?'Legend (no growth)':'Journey (mastery-driven)') + '\n\n'
@@ -438,16 +438,32 @@ async function startGame() {
   state.charHP = state.currentChar.health || 100;
   state.inCombat = false; state.enemy = null;
   state.actionCount = 0; state.turnCount = 0; state.chapters = [];
-  state.showJournal = false; state.showStats = false;
+  state.showJournal = false; state.showStats = false; state.showInventory = false; state.showShop = false;
+  state.deathScreen = false; state.lootToast = null;
+  if (!state.gold) state.gold = 10;
+  // Initialize structured inventory if needed
+  getInventory();
   state.loading = true;
   render();
   try {
-    var openingPrompt = 'Begin the story. Opening scene for ' + state.currentChar.name
-      + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') arriving in ' + state.currentWorld.name + '.'
-      + ' Setting: ' + state.currentWorld.setting + ', Climate: ' + state.currentWorld.climate + ', Danger: ' + state.currentWorld.danger_level + '.'
-      + (state.currentWorld.lore ? ' Lore: ' + state.currentWorld.lore.slice(0,200) : '')
-      + (state.currentChar.backstory ? ' Character backstory: ' + state.currentChar.backstory.slice(0,150) : '')
-      + ' Make it cinematic and immediate. Hook them in the first sentence. 2-3 paragraphs.';
+    var charAbilities = state.currentChar.abilities ? state.currentChar.abilities.slice(0,100) : '';
+    var openingPrompt = 'BEGIN THE STORY. This is the opening scene — make it count.
+
+'
+      + 'CHARACTER: ' + state.currentChar.name + ' — ' + state.currentChar.class + ', ' + state.currentChar.alignment + '
+'
+      + (state.currentChar.backstory ? 'BACKSTORY (this MUST shape the opening): ' + state.currentChar.backstory.slice(0,250) + '
+' : '')
+      + (charAbilities ? 'ABILITIES: ' + charAbilities + '
+' : '')
+      + '
+WORLD: ' + state.currentWorld.name + ' (' + state.currentWorld.setting + ', ' + state.currentWorld.climate + ' climate, ' + state.currentWorld.danger_level + ' danger)
+'
+      + (state.currentWorld.lore ? 'LORE: ' + state.currentWorld.lore.slice(0,200) + '
+' : '')
+      + '
+INSTRUCTIONS: Open in a scene that directly references the character\'s backstory — where they came from, what drove them here, what they\'re running from or toward. '
+      + 'Hook in the first sentence. 2-3 punchy paragraphs. End with something the player must decide right now.';
     var text = await callAI('You are a cinematic RPG narrator. Be vivid, immediate, atmospheric.', openingPrompt, 500);
     state.messages.push({ role:'narrator', text:text, id: Date.now() });
     addToMemory('narrator', text);
@@ -505,14 +521,27 @@ async function sendMessage(text) {
     state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
   }
   // Award mastery XP — detect life path from player's actual words
+  var detectedAction = detectActionType(text);
   if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
-    var detectedAction = detectActionType(text);
     var leveled = awardMasteryXP(detectedAction);
     if (leveled.length > 0) {
-      var c = state.currentChar;
+      var c2 = state.currentChar;
       var aEmoji = ACTION_EMOJI[detectedAction] || '✨';
-      state.messages.push({ role:'system', text: aEmoji + ' [' + detectedAction.toUpperCase() + '] ' + leveled.map(function(s){ return s+' +1 ('+statGrade(c.mastery[s])+')'; }).join(' · ') });
+      state.messages.push({ role:'system', text: aEmoji + ' [' + detectedAction.toUpperCase() + '] ' + leveled.map(function(s){ return s+' +1 ('+statGrade(c2.mastery[s])+')'; }).join(' · ') });
     }
+  }
+  // Economic rewards for life-path actions
+  var goldActions = { trade:true, barter:true, harvest:true, hunt:true, forage:true, perform:true };
+  if (goldActions[detectedAction] && Math.random() < 0.35) {
+    var chaBonus = state.currentChar ? Math.floor(((state.currentChar.stats.CHA||50) - 50) / 20) : 0;
+    var gEarned = Math.max(1, Math.floor(Math.random() * 5) + 1 + chaBonus);
+    state.gold = (state.gold || 0) + gEarned;
+    state.messages.push({ role:'system', text: '💰 +' + gEarned + ' gold' });
+  }
+  // Loot chance from exploration/foraging/hunting
+  var lootActions = { explore:true, hunt:true, forage:true, study:true };
+  if (lootActions[detectedAction] && Math.random() < 0.2) {
+    generateLoot(detectedAction + ' in ' + (state.currentChar ? (state.currentChar.current_location || state.currentWorld.name) : state.currentWorld.name));
   }
   state.loading = false;
   render();
@@ -556,10 +585,20 @@ async function doCombatAction(label, type, icon) {
     var parsed2 = parseResponse(res2);
     if (parsed2.pdmg && state.enemy) { state.enemy.hp = Math.max(0, state.enemy.hp - parsed2.pdmg); }
     if (parsed2.edmg) { state.charHP = Math.max(0, state.charHP - parsed2.edmg); }
-    if (parsed2.combatEnd === 'victory') { state.inCombat = false; state.enemy = null; state.currentChar.experience += 50; }
+    if (parsed2.combatEnd === 'victory') {
+      state.inCombat = false;
+      var defeated = state.enemy ? state.enemy.name : 'enemy';
+      state.enemy = null;
+      state.currentChar.experience += 50;
+      var goldGain = Math.floor(Math.random() * 15) + 3;
+      state.gold += goldGain;
+      state.messages.push({ role:'system', text: '💰 +' + goldGain + ' gold', id: Date.now()+3 });
+      generateLoot('Defeated ' + defeated + ' in ' + (state.currentChar.current_location || state.currentWorld.name));
+    }
     else if (parsed2.combatEnd === 'defeat') {
       state.inCombat = false;
-      state.messages.push({ role:'system', text: 'You have fallen. Your story ends here... for now.', id: Date.now()+3 });
+      state.messages.push({ role:'system', text: '💀 You have fallen...', id: Date.now()+3 });
+      setTimeout(function() { triggerDeath(); }, 1500);
     }
     state.messages.push({ role:'narrator', text: parsed2.cleanText, id: Date.now()+2 });
     addToMemory('narrator', parsed2.cleanText);
@@ -937,9 +976,10 @@ function renderNpcConvoModal() {
     +'</div></div></div>';
 }
 var EXPLORE_ACTIONS = [
-  {label:'Look around',icon:'👁️'},{label:'Check inventory',icon:'🎒'},
-  {label:'Talk to someone',icon:'💬',type:'talk'},{label:'Search the area',icon:'🔍'},
-  {label:'Rest',icon:'🌙'},{label:'Sneak ahead',icon:'🐾'}
+  {label:'Look around',icon:'👁️'},{label:'Search the area',icon:'🔍'},
+  {label:'Talk to someone',icon:'💬',type:'talk'},{label:'Rest',icon:'🌙'},
+  {label:'Sneak ahead',icon:'🐾'},{label:'Visit market',icon:'🏪',type:'shop'},
+  {label:'Forage',icon:'🍃'},{label:'Craft something',icon:'🔨'},
 ];
 
 // ---- UI Helpers ----
@@ -1014,6 +1054,115 @@ function suggestionBox() {
 }
 
 // ---- RENDER ----
+// ── INVENTORY PANEL ───────────────────────────────────────────────────────────
+function renderInventoryPanel() {
+  var inv = getInventory();
+  var c = state.currentChar;
+  var slots = inv.length + '/' + MAX_SLOTS;
+  var itemRows = inv.length === 0
+    ? '<div style="text-align:center;padding:40px 0;color:#4b5563"><div style="font-size:2rem;margin-bottom:8px">🎒</div><div>Your pack is empty.</div></div>'
+    : inv.map(function(item) {
+        var rc = ITEM_RARITIES[item.rarity] || '#9ca3af';
+        var typeIcon = {weapon:'⚔️',armor:'🛡️',consumable:'🧪',tool:'🔧',material:'🪨',misc:'📦'}[item.type] || '📦';
+        var eqBorder = item.equipped ? '1px solid #a855f7' : '1px solid rgba(255,255,255,0.08)';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:'+eqBorder+';margin-bottom:6px">'
+          +'<span style="font-size:1.3rem">'+typeIcon+'</span>'
+          +'<div style="flex:1;min-width:0">'
+          +'<div style="display:flex;align-items:center;gap:6px"><span style="font-weight:700;font-size:0.85rem;color:'+rc+'">'+esc(item.name)+'</span>'
+          +(item.qty>1?'<span style="font-size:0.7rem;background:rgba(255,255,255,0.1);padding:1px 6px;border-radius:9999px;color:#9ca3af">x'+item.qty+'</span>':'')
+          +(item.equipped?'<span style="font-size:0.65rem;background:rgba(168,85,247,0.2);color:#a855f7;padding:1px 6px;border-radius:9999px;border:1px solid rgba(168,85,247,0.3)">EQUIPPED</span>':'')
+          +'</div>'
+          +(item.effect?'<div style="font-size:0.72rem;color:#6b7280;margin-top:2px">'+esc(item.effect)+'</div>':'')
+          +'</div>'
+          +'<div style="display:flex;gap:4px;flex-shrink:0">'
+          +((item.type==='weapon'||item.type==='armor'||item.type==='tool')?'<button class="inv-equip-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(168,85,247,0.3);background:rgba(168,85,247,0.1);color:#c084fc;cursor:pointer">'+(item.equipped?'Unequip':'Equip')+'</button>':'')
+          +(item.type==='consumable'?'<button class="inv-use-btn" data-id="'+item.id+'" data-name="'+esc(item.name)+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.1);color:#4ade80;cursor:pointer">Use</button>':'')
+          +'<button class="inv-sell-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(250,204,21,0.2);background:rgba(250,204,21,0.05);color:#facc15;cursor:pointer">Sell</button>'
+          +'<button class="inv-drop-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.05);color:#f87171;cursor:pointer">Drop</button>'
+          +'</div></div>';
+      }).join('');
+
+  return '<div style="position:fixed;top:0;right:0;width:320px;height:100vh;background:#0a0a14;border-left:1px solid rgba(255,255,255,0.1);z-index:150;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between">'
+    +'<div><div style="font-weight:700;font-size:0.9rem">🎒 Inventory</div>'
+    +'<div style="font-size:0.72rem;color:#9ca3af">'+slots+' slots · <span style="color:#facc15">💰 '+state.gold+'g</span></div></div>'
+    +'<div style="display:flex;gap:6px">'
+    +'<button id="btn-open-shop" style="font-size:0.72rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(250,204,21,0.3);background:rgba(250,204,21,0.1);color:#facc15;cursor:pointer">🏪 Shop</button>'
+    +'<button id="btn-close-inv" style="background:none;border:none;color:#6b7280;font-size:1rem;cursor:pointer">✕</button>'
+    +'</div></div>'
+    +'<div style="flex:1;overflow-y:auto;padding:12px">'+itemRows+'</div>'
+    +'</div>';
+}
+
+// ── SHOP PANEL ────────────────────────────────────────────────────────────────
+function renderShopPanel() {
+  var shopHtml = state.shopLoading
+    ? '<div style="text-align:center;padding:40px 0;color:#9ca3af"><div style="font-size:2rem;margin-bottom:8px" class="pulse">🏪</div><div>Merchant is sorting wares...</div></div>'
+    : state.shopItems.map(function(item) {
+        var rc = ITEM_RARITIES[item.rarity] || '#9ca3af';
+        var typeIcon = {weapon:'⚔️',armor:'🛡️',consumable:'🧪',tool:'🔧',material:'🪨',misc:'📦'}[item.type] || '📦';
+        var canAfford = state.gold >= (item.value || 0);
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);margin-bottom:6px">'
+          +'<span style="font-size:1.3rem">'+typeIcon+'</span>'
+          +'<div style="flex:1;min-width:0">'
+          +'<div style="font-weight:700;font-size:0.85rem;color:'+rc+'">'+esc(item.name)+'</div>'
+          +(item.effect?'<div style="font-size:0.72rem;color:#6b7280;margin-top:2px">'+esc(item.effect)+'</div>':'')
+          +'</div>'
+          +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">'
+          +'<span style="color:#facc15;font-size:0.8rem;font-weight:700">'+item.value+'g</span>'
+          +'<button class="shop-buy-btn" data-idx="'+state.shopItems.indexOf(item)+'" '+(canAfford?'':'disabled')+' style="font-size:0.7rem;padding:4px 10px;border-radius:6px;border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,'+(canAfford?'0.1':'0.03')+');color:'+(canAfford?'#4ade80':'#374151')+';cursor:'+(canAfford?'pointer':'not-allowed')+'">Buy</button>'
+          +'</div></div>';
+      }).join('');
+
+  return '<div style="position:fixed;top:0;right:'+(state.showInventory?'320px':'0')+';width:300px;height:100vh;background:#0a0a18;border-left:1px solid rgba(250,204,21,0.15);z-index:149;display:flex;flex-direction:column;overflow:hidden">'
+    +'<div style="padding:16px;border-bottom:1px solid rgba(250,204,21,0.15);display:flex;align-items:center;justify-content:space-between">'
+    +'<div><div style="font-weight:700;font-size:0.9rem;color:#facc15">🏪 Merchant</div>'
+    +'<div style="font-size:0.72rem;color:#9ca3af">Your gold: <span style="color:#facc15">'+state.gold+'g</span></div></div>'
+    +'<button id="btn-close-shop" style="background:none;border:none;color:#6b7280;font-size:1rem;cursor:pointer">✕</button>'
+    +'</div>'
+    +'<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);display:flex;gap:6px">'
+    +['general','weapons','potions','tools'].map(function(t){
+        return '<button class="shop-type-btn" data-type="'+t+'" style="font-size:0.7rem;padding:4px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:#9ca3af;cursor:pointer">'+t+'</button>';
+      }).join('')
+    +'</div>'
+    +'<div style="flex:1;overflow-y:auto;padding:12px">'+shopHtml+'</div>'
+    +'</div>';
+}
+
+// ── DEATH SCREEN ──────────────────────────────────────────────────────────────
+function renderDeathScreen() {
+  var dropped = state.deathDropped || [];
+  var goldLost = state.deathGoldLost || 0;
+  return '<div style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center">'
+    +'<div style="max-width:400px;width:100%;padding:40px 32px;text-align:center">'
+    +'<div style="font-size:5rem;margin-bottom:16px;animation:pulse 2s infinite">💀</div>'
+    +'<h2 style="font-size:1.8rem;font-weight:800;color:#f87171;margin-bottom:8px">You Have Fallen</h2>'
+    +'<p style="color:#9ca3af;margin-bottom:24px;line-height:1.6">Death is not the end in ' + esc(state.currentWorld ? state.currentWorld.name : 'this world') + '. But it has a price.</p>'
+    +(dropped.length > 0 ? '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px;margin-bottom:12px;font-size:0.8rem;color:#f87171"><strong>Lost items:</strong> '+esc(dropped.join(', '))+'</div>' : '')
+    +(goldLost > 0 ? '<div style="background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.2);border-radius:12px;padding:10px;margin-bottom:20px;font-size:0.8rem;color:#facc15">💰 Lost <strong>'+goldLost+'g</strong></div>' : '')
+    +'<button id="btn-respawn" style="background:linear-gradient(to right,#7f1d1d,#991b1b);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🌅 Rise Again</button>'
+    +'<button id="btn-exit-death" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:10px 32px;border-radius:12px;font-size:0.875rem;cursor:pointer;width:100%">← Abandon & Exit</button>'
+    +'</div></div>';
+}
+
+// ── LOOT TOAST ────────────────────────────────────────────────────────────────
+function renderLootToast() {
+  if (!state.lootToast) return '';
+  var items = state.lootToast.items || [];
+  return '<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:250;background:linear-gradient(135deg,#1a1a2e,#16213e);border:1px solid rgba(168,85,247,0.4);border-radius:16px;padding:14px 20px;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.5)">'
+    +'<div style="font-size:0.72rem;color:#a855f7;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">'+esc(state.lootToast.text)+'</div>'
+    +items.map(function(item){
+        var rc = ITEM_RARITIES[item.rarity] || '#9ca3af';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0">'
+          +'<span style="font-size:1rem">'+({weapon:'⚔️',armor:'🛡️',consumable:'🧪',tool:'🔧',material:'🪨',misc:'📦'}[item.type]||'📦')+'</span>'
+          +'<span style="font-weight:700;color:'+rc+';font-size:0.85rem">'+esc(item.name)+'</span>'
+          +(item.rarity!=='common'?'<span style="font-size:0.65rem;color:'+rc+';border:1px solid '+rc+'40;padding:1px 6px;border-radius:9999px">'+item.rarity+'</span>':'')
+          +'</div>';
+      }).join('')
+    +'</div>';
+}
+
+
 function render() {
   var root = document.getElementById('root');
   if (!root) return;
@@ -1788,9 +1937,13 @@ function renderPlay() {
   var npcCount=state.npcs.length,questCount=state.quests.filter(function(q){return q.status==='active';}).length;
   var journalBadge=state.showJournal?'':((npcCount||questCount)?'<span style="font-size:0.65rem;background:#7e22ce;color:white;padding:2px 6px;border-radius:9999px;margin-left:4px">'+(npcCount+questCount)+'</span>':'');
 
-  var mainStyle=state.showJournal?'margin-right:320px;':'';
+  var mainStyle=(state.showJournal?'margin-right:320px;':'')+(state.showInventory&&!state.showJournal?'margin-right:320px;':state.showInventory&&state.showShop?'margin-right:640px;':state.showInventory?'margin-right:320px;':'');
 
-  return (state.npcConvo ? renderNpcConvoModal() : '') + toast
+  return (state.deathScreen ? renderDeathScreen() : '')
+    + renderLootToast()
+    + (state.npcConvo ? renderNpcConvoModal() : '') + toast
+    +(state.showInventory ? renderInventoryPanel() : '')
+    +(state.showShop ? renderShopPanel() : '')
     +(state.showJournal?renderJournal():'')
     +'<div style="display:flex;flex-direction:column;height:100vh;background:#030712;'+mainStyle+'">'
     // Header
@@ -1801,6 +1954,7 @@ function renderPlay() {
     +'<div style="display:flex;gap:6px">'
     +'<button id="btn-save-chap" style="font-size:0.75rem;background:rgba(255,255,255,0.1);border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">💾</button>'
     +'<button id="btn-toggle-stats" style="font-size:0.75rem;background:'+(state.showStats?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">📊</button>'
+    +'<button id="btn-toggle-inv" style="font-size:0.75rem;background:'+(state.showInventory?'rgba(250,204,21,0.2)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">🎒 <span style=\'color:#facc15\'>'+state.gold+'g</span></button>'
     +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
     +'</div></div>'
     +statsBar+combatBars
@@ -1826,6 +1980,35 @@ function attachPlayEvents() {
   if(ts) ts.addEventListener('click',function(){state.showStats=!state.showStats;render();scrollToBottom();});
   if(tj) tj.addEventListener('click',function(){state.showJournal=!state.showJournal;render();scrollToBottom();});
   if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
+  // Inventory + Shop
+  var ti=document.getElementById('btn-toggle-inv');
+  if(ti) ti.addEventListener('click',function(){state.showInventory=!state.showInventory;if(!state.showInventory)state.showShop=false;render();});
+  var ci=document.getElementById('btn-close-inv');
+  if(ci) ci.addEventListener('click',function(){state.showInventory=false;state.showShop=false;render();});
+  var os=document.getElementById('btn-open-shop');
+  if(os) os.addEventListener('click',function(){generateShop('general');});
+  var cs=document.getElementById('btn-close-shop');
+  if(cs) cs.addEventListener('click',function(){state.showShop=false;render();});
+  // Death screen
+  var rb=document.getElementById('btn-respawn'),ed=document.getElementById('btn-exit-death');
+  if(rb) rb.addEventListener('click',function(){respawn();});
+  if(ed) ed.addEventListener('click',function(){state.deathScreen=false;state.screen='worldDetail';render();});
+  // Inventory item actions
+  document.querySelectorAll('.inv-equip-btn').forEach(function(b){ b.addEventListener('click',function(){ toggleEquip(parseInt(b.dataset.id)); render(); }); });
+  document.querySelectorAll('.inv-use-btn').forEach(function(b){ b.addEventListener('click',function(){
+    sendMessage('I use my ' + b.dataset.name + '.');
+    removeItemFromInventory(parseInt(b.dataset.id));
+  }); });
+  document.querySelectorAll('.inv-sell-btn').forEach(function(b){ b.addEventListener('click',function(){ sellItem(parseInt(b.dataset.id)); }); });
+  document.querySelectorAll('.inv-drop-btn').forEach(function(b){ b.addEventListener('click',function(){
+    if(confirm('Drop this item?')) { removeItemFromInventory(parseInt(b.dataset.id)); render(); }
+  }); });
+  // Shop item buy
+  document.querySelectorAll('.shop-buy-btn').forEach(function(b){ b.addEventListener('click',function(){
+    var item = state.shopItems[parseInt(b.dataset.idx)];
+    if(item) buyItem(item);
+  }); });
+  document.querySelectorAll('.shop-type-btn').forEach(function(b){ b.addEventListener('click',function(){ generateShop(b.dataset.type); }); });
   if(send) send.addEventListener('click',function(){if(inp)sendMessage(inp.value);});
   if(inp) inp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage(inp.value);}});
   document.querySelectorAll('.action-btn').forEach(function(btn){
@@ -1839,6 +2022,10 @@ function attachPlayEvents() {
           var nm=prompt('Who do you want to talk to?\n\n'+state.npcs.map(function(n,i){return (i+1)+'. '+n.name+' ('+n.attitude+')';}).join('\n')+'\n\nType a name:');
           if(nm){var f=state.npcs.find(function(n){return n.name.toLowerCase().indexOf(nm.toLowerCase())!==-1;});if(f)openNpcConvo(f);else sendMessage('I look around for someone to talk to.');}
         }
+      } else if(btn.dataset.type==='shop') {
+        state.showInventory = true; generateShop('general');
+      } else if(btn.dataset.label==='Check inventory' || btn.dataset.type==='inventory') {
+        state.showInventory = !state.showInventory; render();
       } else { sendMessage(btn.dataset.label); }
     });
   });
