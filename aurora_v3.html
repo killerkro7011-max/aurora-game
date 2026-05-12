@@ -1942,53 +1942,6 @@ function collectCharStep() {
   document.querySelectorAll('.stat-slider').forEach(function(sl){if(!state.draftChar.stats)state.draftChar.stats={};state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;});
   document.querySelectorAll('.mastery-slider').forEach(function(sl){if(!state.draftChar.mastery)state.draftChar.mastery={};state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;});
 }
-
-function renderWorldDetail() {
-  var w=state.currentWorld;
-  var chars=state.characters.filter(function(c){return c.world_id===w.id;});
-  var DC={Peaceful:'#4ade80',Low:'#60a5fa',Medium:'#facc15',High:'#fb923c',Extreme:'#f87171'};
-  var charCards=chars.length===0
-    ?'<p style="color:#6b7280;margin-bottom:16px">No characters yet. Create one to enter this world.</p>'
-    :chars.map(function(c,i){
-        return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><h3 style="font-size:1.125rem;font-weight:700">'+esc(c.name)+'</h3><span style="font-size:0.75rem;background:rgba(147,51,234,0.2);color:#c084fc;padding:4px 10px;border-radius:9999px">'+esc(c.class)+'</span></div>'
-          +'<p style="color:#9ca3af;font-size:0.875rem;margin-bottom:12px">'+esc((c.backstory||'No backstory.').slice(0,100))+'</p>'
-          +'<div style="display:flex;gap:12px;font-size:0.75rem;color:#6b7280;margin-bottom:16px"><span>❤️ '+c.health+'/100</span><span>⭐ Lv.'+c.level+'</span><span>'+esc(c.alignment)+'</span></div>'
-          +'<button class="enter-world-btn" data-char-i="'+i+'" style="width:100%;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:10px;border-radius:12px;font-weight:600;font-size:0.875rem;cursor:pointer">📖 Enter World</button>'
-          +'</div>';
-      }).join('');
-  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
-    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
-    +'<div style="display:flex;align-items:center;gap:16px"><button id="btn-back-to-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Worlds</button>'
-    +'<div><h1 style="font-size:1.5rem;font-weight:700">'+esc(w.name)+'</h1><p style="color:#9ca3af;font-size:0.875rem">'+w.setting+' · '+w.climate+' · '+w.danger_level+' danger</p></div></div>'
-    +'<button id="btn-create-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer">+ New Character</button>'
-    +'</div>'
-    +'<div style="max-width:48rem;margin:0 auto;padding:40px 24px">'
-    +(w.description?'<p style="color:#d1d5db;font-size:1.125rem;margin-bottom:32px">'+esc(w.description)+'</p>':'')
-    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:40px">'
-    +[['Magic',w.magic_level,'#c084fc'],['Tech',w.technology_level,'#60a5fa'],['Danger',w.danger_level,DC[w.danger_level]||'white'],['Population',w.population_density,'#4ade80']].map(function(x){
-      return '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px;text-align:center"><div style="font-size:0.75rem;color:#6b7280;margin-bottom:4px">'+x[0]+'</div><div style="font-weight:700;color:'+x[2]+'">'+x[1]+'</div></div>';
-    }).join('')+'</div>'
-    +(w.lore?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">📜 Lore</h3><p style="color:#d1d5db;font-size:0.875rem;line-height:1.6">'+esc(w.lore)+'</p></div>':'')
-    +(w.factions?'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px"><h3 style="font-weight:700;margin-bottom:8px;color:#c084fc">⚔️ Factions</h3><p style="color:#d1d5db;font-size:0.875rem">'+esc(w.factions)+'</p></div>':'')
-    +'<h2 style="font-size:1.25rem;font-weight:700;margin-bottom:16px">Characters</h2>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px">'+charCards+'</div>'
-    +'</div></div>';
-}
-function attachWorldDetailEvents() {
-  var b=document.getElementById('btn-back-to-worlds'),c=document.getElementById('btn-create-char');
-  if(b) b.addEventListener('click',function(){state.screen='worlds';render();});
-  if(c) c.addEventListener('click',function(){state.screen='createChar';state.charStep=0;state.draftChar=freshChar(state.currentWorld.id,state.currentWorld.name);render();});
-  document.querySelectorAll('.enter-world-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      var chars=state.characters.filter(function(c){return c.world_id===state.currentWorld.id;});
-      state.currentChar=chars[parseInt(btn.dataset.charI)];
-      state.screen='play'; startGame();
-    });
-  });
-}
-
-
 function renderJournal() {
   var attC = {friendly:'#4ade80',neutral:'#facc15',hostile:'#f87171'};
   var questC = {active:'#60a5fa',completed:'#4ade80',failed:'#f87171'};
@@ -2199,7 +2152,7 @@ function attachPlayEvents() {
 }
 
 // ---- Boot ----
-render();
+try { render(); } catch(e) { document.getElementById('root').innerHTML = '<div style="color:red;padding:20px;font-family:monospace">BOOT ERROR: ' + e.message + '<br>' + e.stack + '</div>'; }
 </script>
 </body>
 </html>
