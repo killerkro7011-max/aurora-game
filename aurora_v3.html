@@ -88,6 +88,177 @@ function freshChar(worldId, worldName) {
     mastery_xp:{ STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 }
   };
 }
+
+// ── INVENTORY & SHOP & DEATH ENGINE ─────────────────────────────────────────
+var MAX_SLOTS = 20;
+var ITEM_RARITIES = { common:'#9ca3af', uncommon:'#4ade80', rare:'#60a5fa', epic:'#a855f7', legendary:'#f59e0b' };
+
+function getInventory() {
+  var c = state.currentChar;
+  if (!c) return [];
+  if (!c.inventoryItems) {
+    c.inventoryItems = (c.inventory || 'Torch, basic supplies').split(',').map(function(s, i) {
+      return { id: i, name: s.trim(), qty: 1, rarity: 'common', type: 'misc', effect: '', equipped: false, value: 2 };
+    });
+  }
+  return c.inventoryItems;
+}
+
+function addItemToInventory(item) {
+  var c = state.currentChar;
+  if (!c) return false;
+  var inv = getInventory();
+  if (inv.length >= MAX_SLOTS) return false;
+  var existing = inv.find(function(i) { return i.name.toLowerCase() === (item.name||'').toLowerCase(); });
+  if (existing) { existing.qty = (existing.qty || 1) + 1; }
+  else { inv.push(Object.assign({ id: Date.now() + Math.random(), qty: 1, rarity: 'common', type: 'misc', effect: '', equipped: false, value: 2 }, item)); }
+  c.inventoryItems = inv;
+  save();
+  return true;
+}
+
+function removeItemFromInventory(itemId) {
+  var c = state.currentChar;
+  if (!c) return;
+  var inv = getInventory();
+  var idx = inv.findIndex(function(i) { return String(i.id) === String(itemId); });
+  if (idx === -1) return;
+  if (inv[idx].qty > 1) { inv[idx].qty--; }
+  else { inv.splice(idx, 1); }
+  c.inventoryItems = inv;
+  save();
+}
+
+function toggleEquip(itemId) {
+  var inv = getInventory();
+  var item = inv.find(function(i) { return String(i.id) === String(itemId); });
+  if (item) { item.equipped = !item.equipped; save(); }
+}
+
+async function generateLoot(context) {
+  var c = state.currentChar, w = state.currentWorld;
+  var inv = getInventory();
+  if (inv.length >= MAX_SLOTS) {
+    state.lootToast = { text: 'Inventory full! Drop something first.', items: [] };
+    setTimeout(function(){ state.lootToast = null; render(); }, 3000);
+    render(); return;
+  }
+  var slotsLeft = MAX_SLOTS - inv.length;
+  var sys = 'You are a loot generator for a narrative RPG. Return ONLY a valid JSON array of 1-2 item objects.';
+  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Context: ' + context + '.
+'
+    + 'Generate 1-' + Math.min(2, slotsLeft) + ' contextually appropriate items. Each item must be a JSON object: { "name": string, "rarity": "common"|"uncommon"|"rare"|"epic"|"legendary", "type": "weapon"|"armor"|"consumable"|"tool"|"misc"|"material", "effect": "brief effect", "value": gold_number }.
+'
+    + 'Match the world setting and magic level. Return ONLY the JSON array, no other text.';
+  try {
+    var raw = await callAI(sys, prompt, 300);
+    var cleaned = raw.replace(/```json[
+]*/g,'').replace(/```[
+]*/g,'').trim();
+    var s = cleaned.indexOf('['), e = cleaned.lastIndexOf(']');
+    if (s !== -1 && e !== -1) cleaned = cleaned.slice(s, e+1);
+    var items = JSON.parse(cleaned);
+    if (!Array.isArray(items)) items = [items];
+    items.forEach(function(item) { addItemToInventory(item); });
+    state.lootToast = { text: 'You found something!', items: items };
+  } catch(err) {
+    var fallback = { name: 'Strange Relic', qty: 1, rarity: 'uncommon', type: 'misc', effect: 'Unknown purpose', value: 5 };
+    addItemToInventory(fallback);
+    state.lootToast = { text: 'You found something!', items: [fallback] };
+  }
+  setTimeout(function(){ state.lootToast = null; render(); }, 4000);
+  render();
+}
+
+async function generateShop(type) {
+  state.shopLoading = true; state.showShop = true; render();
+  var c = state.currentChar, w = state.currentWorld;
+  var sys = 'You are a shop inventory generator for a narrative RPG. Return ONLY a valid JSON array of exactly 6 items.';
+  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ', tech: ' + w.technology_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Player gold: ' + (state.gold||0) + '. Shop type: ' + (type||'general') + '.
+'
+    + 'Generate exactly 6 items for sale. Each: { "name": string, "rarity": "common"|"uncommon"|"rare", "type": "weapon"|"armor"|"consumable"|"tool"|"misc", "effect": "brief description", "value": price_number }. Price 1-50 gold. Return ONLY the JSON array.';
+  try {
+    var raw = await callAI(sys, prompt, 400);
+    var cleaned = raw.replace(/```json[
+]*/g,'').replace(/```[
+]*/g,'').trim();
+    var s = cleaned.indexOf('['), e = cleaned.lastIndexOf(']');
+    if (s !== -1 && e !== -1) cleaned = cleaned.slice(s, e+1);
+    state.shopItems = JSON.parse(cleaned);
+    if (!Array.isArray(state.shopItems)) state.shopItems = [];
+  } catch(err) {
+    state.shopItems = [
+      { name: 'Health Potion', rarity: 'common', type: 'consumable', effect: 'Restores 30 HP', value: 8 },
+      { name: 'Iron Dagger', rarity: 'common', type: 'weapon', effect: '+5 STR in combat', value: 12 },
+      { name: "Traveler's Cloak", rarity: 'common', type: 'armor', effect: '+5 DEX, weather resistance', value: 15 },
+      { name: 'Rope (50ft)', rarity: 'common', type: 'tool', effect: 'Climbing, binding', value: 3 },
+      { name: 'Torch Bundle', rarity: 'common', type: 'misc', effect: 'Lights dark areas (x5)', value: 2 },
+      { name: 'Dried Rations', rarity: 'common', type: 'consumable', effect: 'Restores 5 CON', value: 4 },
+    ];
+  }
+  state.shopLoading = false;
+  render();
+}
+
+function buyItem(item) {
+  var price = item.value || 5;
+  if ((state.gold||0) < price) { alert('Not enough gold! Need ' + price + 'g, have ' + (state.gold||0) + 'g'); return; }
+  if (getInventory().length >= MAX_SLOTS) { alert('Inventory full! Drop an item first.'); return; }
+  state.gold -= price;
+  addItemToInventory(item);
+  state.lootToast = { text: 'Purchased for ' + price + 'g!', items: [item] };
+  setTimeout(function(){ state.lootToast = null; render(); }, 2000);
+  render();
+}
+
+function sellItem(itemId) {
+  var inv = getInventory();
+  var item = inv.find(function(i) { return String(i.id) === String(itemId); });
+  if (!item) return;
+  var sellPrice = Math.max(1, Math.floor((item.value || 5) * 0.5));
+  state.gold = (state.gold||0) + sellPrice;
+  removeItemFromInventory(itemId);
+  state.lootToast = { text: 'Sold for ' + sellPrice + 'g!', items: [] };
+  setTimeout(function(){ state.lootToast = null; render(); }, 2000);
+  render();
+}
+
+function triggerDeath() {
+  state.deathScreen = true;
+  state.inCombat = false;
+  state.enemy = null;
+  var inv = getInventory();
+  var droppedCount = Math.floor(inv.length * 0.3);
+  var dropped = [];
+  for (var i = 0; i < droppedCount; i++) {
+    if (inv.length === 0) break;
+    var idx = Math.floor(Math.random() * inv.length);
+    dropped.push(inv[idx].name);
+    inv.splice(idx, 1);
+  }
+  if (state.currentChar) state.currentChar.inventoryItems = inv;
+  var goldLost = Math.floor((state.gold||0) * 0.25);
+  state.gold = Math.max(0, (state.gold||0) - goldLost);
+  state.deathDropped = dropped;
+  state.deathGoldLost = goldLost;
+  save();
+  render();
+}
+
+function respawn() {
+  var conStat = (state.currentChar && state.currentChar.stats && state.currentChar.stats.CON) || 50;
+  state.charHP = Math.max(10, Math.floor(conStat * 0.4));
+  state.deathScreen = false;
+  state.deathDropped = [];
+  state.deathGoldLost = 0;
+  state.keyEvents.push({ turn: state.turnCount, text: state.currentChar.name + ' fell and was reborn.' });
+  state.messages.push({ role:'narrator', text: 'Darkness... then a sharp breath. You wake — bruised, stripped of some possessions, but alive. The world has not finished with you yet.', id: Date.now() });
+  addToMemory('narrator', 'The character died and respawned with reduced health and some items lost.');
+  render();
+  scrollToBottom();
+}
+
+
 // ── MASTERY ENGINE ──────────────────────────────────────────────────────────
 var STAT_XP_PER_LEVEL = 100; // mastery_xp needed to grow stat by 1 point
 var ACTION_WEIGHTS = {
