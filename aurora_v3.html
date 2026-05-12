@@ -91,13 +91,90 @@ function freshChar(worldId, worldName) {
 // ── MASTERY ENGINE ──────────────────────────────────────────────────────────
 var STAT_XP_PER_LEVEL = 100; // mastery_xp needed to grow stat by 1 point
 var ACTION_WEIGHTS = {
-  combat:  { STR:3, DEX:2, CON:2, INT:0, WIS:0, CHA:0, SMY:1 },
-  ability: { STR:1, DEX:1, CON:0, INT:3, WIS:2, CHA:1, SMY:2 },
-  flee:    { STR:0, DEX:3, CON:1, INT:1, WIS:1, CHA:0, SMY:1 },
-  dialogue:{ STR:0, DEX:0, CON:0, INT:2, WIS:2, CHA:4, SMY:1 },
-  explore: { STR:1, DEX:1, CON:1, INT:2, WIS:2, CHA:0, SMY:2 },
-  rest:    { STR:0, DEX:0, CON:3, INT:1, WIS:2, CHA:0, SMY:3 },
+  // — Combat path —
+  combat:   { STR:3, DEX:2, CON:2, INT:0, WIS:0, CHA:0, SMY:1 },
+  ability:  { STR:1, DEX:1, CON:0, INT:3, WIS:2, CHA:1, SMY:2 },
+  flee:     { STR:0, DEX:3, CON:1, INT:1, WIS:1, CHA:0, SMY:1 },
+  // — Social path —
+  dialogue: { STR:0, DEX:0, CON:0, INT:2, WIS:2, CHA:4, SMY:1 },
+  negotiate:{ STR:0, DEX:0, CON:0, INT:2, WIS:3, CHA:4, SMY:2 },
+  // — Knowledge path —
+  study:    { STR:0, DEX:0, CON:0, INT:4, WIS:3, CHA:0, SMY:2 },
+  teach:    { STR:0, DEX:0, CON:0, INT:3, WIS:3, CHA:3, SMY:2 },
+  // — Craft path —
+  craft:    { STR:2, DEX:3, CON:1, INT:3, WIS:1, CHA:0, SMY:2 },
+  build:    { STR:3, DEX:2, CON:2, INT:2, WIS:1, CHA:0, SMY:1 },
+  brew:     { STR:0, DEX:2, CON:0, INT:4, WIS:3, CHA:0, SMY:2 },
+  // — Land path —
+  farm:     { STR:2, DEX:1, CON:3, INT:1, WIS:3, CHA:0, SMY:2 },
+  harvest:  { STR:2, DEX:2, CON:2, INT:1, WIS:2, CHA:0, SMY:1 },
+  tend:     { STR:1, DEX:1, CON:2, INT:1, WIS:3, CHA:1, SMY:3 },
+  // — Trade path —
+  trade:    { STR:0, DEX:1, CON:0, INT:2, WIS:2, CHA:4, SMY:2 },
+  barter:   { STR:0, DEX:0, CON:0, INT:2, WIS:2, CHA:4, SMY:1 },
+  // — Healing path —
+  heal:     { STR:0, DEX:2, CON:1, INT:3, WIS:4, CHA:1, SMY:3 },
+  // — Exploration & survival —
+  explore:  { STR:1, DEX:1, CON:1, INT:2, WIS:2, CHA:0, SMY:2 },
+  hunt:     { STR:2, DEX:3, CON:1, INT:1, WIS:2, CHA:0, SMY:1 },
+  forage:   { STR:1, DEX:2, CON:1, INT:1, WIS:3, CHA:0, SMY:2 },
+  rest:     { STR:0, DEX:0, CON:3, INT:1, WIS:2, CHA:0, SMY:3 },
+  pray:     { STR:0, DEX:0, CON:1, INT:1, WIS:3, CHA:1, SMY:4 },
+  // — Perform path —
+  perform:  { STR:1, DEX:2, CON:1, INT:2, WIS:1, CHA:4, SMY:2 },
+  write:    { STR:0, DEX:1, CON:0, INT:4, WIS:2, CHA:2, SMY:2 },
 };
+
+// Maps player input keywords → action type
+var ACTION_KEYWORD_MAP = {
+  attack:'combat',fight:'combat',strike:'combat',slash:'combat',stab:'combat',shoot:'combat',block:'combat',parry:'combat',kill:'combat',slay:'combat',
+  cast:'ability',spell:'ability',power:'ability',channel:'ability',summon:'ability',conjure:'ability',
+  flee:'flee',run:'flee',escape:'flee',retreat:'flee',dash:'flee',
+  talk:'dialogue',speak:'dialogue',ask:'dialogue',tell:'dialogue',say:'dialogue',greet:'dialogue',chat:'dialogue',
+  convince:'negotiate',persuade:'negotiate',bribe:'negotiate',negotiate:'negotiate',threaten:'negotiate',lie:'negotiate',deceive:'negotiate',bluff:'negotiate',
+  study:'study',read:'study',learn:'study',research:'study',investigate:'study',examine:'study',analyze:'study',
+  teach:'teach',explain:'teach',train:'teach',mentor:'teach',instruct:'teach',
+  craft:'craft',make:'craft',forge:'craft',smith:'craft',sew:'craft',carve:'craft',cook:'craft',bake:'craft',weave:'craft',
+  build:'build',construct:'build',repair:'build',fix:'build',erect:'build',
+  brew:'brew',distill:'brew',mix:'brew',alchemize:'brew',
+  farm:'farm',plant:'farm',sow:'farm',plow:'farm',till:'farm',cultivate:'farm',
+  harvest:'harvest',reap:'harvest',pick:'harvest',gather:'harvest',collect:'harvest',
+  tend:'tend',water:'tend',prune:'tend',feed:'tend',milk:'tend',shear:'tend',care:'tend',groom:'tend',
+  sell:'trade',buy:'trade',trade:'trade',purchase:'trade',market:'trade',shop:'trade',
+  barter:'barter',haggle:'barter',exchange:'barter',
+  heal:'heal',bandage:'heal',treat:'heal',mend:'heal',cure:'heal',medicine:'heal',nurse:'heal',
+  explore:'explore',travel:'explore',walk:'explore',journey:'explore',scout:'explore',venture:'explore',wander:'explore',
+  hunt:'hunt',track:'hunt',trap:'hunt',fish:'hunt',stalk:'hunt',
+  forage:'forage',search:'forage',look:'forage',
+  rest:'rest',sleep:'rest',wait:'rest',recover:'rest',camp:'rest',
+  meditate:'pray',pray:'pray',worship:'pray',kneel:'pray',offer:'pray',
+  sing:'perform',play:'perform',perform:'perform',dance:'perform',entertain:'perform',juggle:'perform',
+  write:'write',compose:'write',paint:'write',draw:'write',record:'write',journal:'write',
+};
+
+// Emoji for each action type shown in mastery notifications
+var ACTION_EMOJI = {
+  combat:'⚔️', ability:'✨', flee:'🏃', dialogue:'💬', negotiate:'🤝',
+  study:'📚', teach:'🎓', craft:'🔨', build:'🏗️', brew:'⚗️',
+  farm:'🌾', harvest:'🌾', tend:'🐄', trade:'💰', barter:'💰',
+  heal:'💚', explore:'🗺️', hunt:'🏹', forage:'🍃',
+  rest:'😴', pray:'🙏', perform:'🎭', write:'✍️',
+};
+
+// Detect the dominant action type from a player's free-text input
+function detectActionType(text) {
+  var lower = text.toLowerCase();
+  var words = lower.split(/\W+/);
+  var counts = {};
+  words.forEach(function(w) {
+    var t = ACTION_KEYWORD_MAP[w];
+    if (t) counts[t] = (counts[t]||0) + 1;
+  });
+  var best = 'explore', bestN = 0;
+  Object.keys(counts).forEach(function(t){ if(counts[t]>bestN){ best=t; bestN=counts[t]; }});
+  return best;
+}
+
 
 function awardMasteryXP(actionType) {
   var c = state.currentChar;
@@ -323,7 +400,10 @@ function buildSystemPrompt() {
     + '- 2-4 punchy paragraphs. Make every word count.\n'
     + '- End with tension or an implicit decision point.\n'
     + '- The world REMEMBERS. NPCs react to your reputation and past actions.\n'
-    + '- Adapt tone to danger level.\n\n'
+    + '- Adapt tone to danger level.\n'
+    + '- LIFE PATHS: This world is not only about combat. A farmer, trader, scholar, healer or bard is equally valid.\n'
+    + '  Honor whatever life path the player chooses. Harvesting crops, crafting tools, trading goods, healing the sick — these are victories.\n'
+    + '  Describe peaceful paths with the same richness as battle. High WIS farmers sense weather; high CHA traders command respect; high INT scholars unlock secrets.\n\n'
     + 'COMBAT RULES:\n'
     + '- When combat starts, tag: [COMBAT_START:EnemyName:HP]\n'
     + '- Write combat as real-time cinematic action — never turn-based language.\n'
@@ -424,12 +504,14 @@ async function sendMessage(text) {
   } catch(e) {
     state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
   }
-  // Award mastery XP for dialogue/exploration
+  // Award mastery XP — detect life path from player's actual words
   if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
-    var leveled = awardMasteryXP('dialogue');
+    var detectedAction = detectActionType(text);
+    var leveled = awardMasteryXP(detectedAction);
     if (leveled.length > 0) {
       var c = state.currentChar;
-      state.messages.push({ role:'system', text:'✨ ' + leveled.map(function(s){ return s+' mastery +1 ('+statGrade(c.mastery[s])+')'; }).join(' · ') });
+      var aEmoji = ACTION_EMOJI[detectedAction] || '✨';
+      state.messages.push({ role:'system', text: aEmoji + ' [' + detectedAction.toUpperCase() + '] ' + leveled.map(function(s){ return s+' +1 ('+statGrade(c.mastery[s])+')'; }).join(' · ') });
     }
   }
   state.loading = false;
@@ -1692,7 +1774,7 @@ function renderPlay() {
     +'</div>'
     +hpBar(state.charHP,100,c.name+"'s Health")
     +(state.inCombat&&state.enemy?'<div style="margin-top:8px">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div>':'')
-    +(c.progression_mode!=='legend'?'<div style="margin-top:12px"><div style="color:#9ca3af;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;margin-bottom:6px">MASTERY</div>'
+    +(c.progression_mode!=='legend'?'<div style="margin-top:12px"><div style="color:#9ca3af;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;margin-bottom:2px">MASTERY</div><div style="color:#6b7280;font-size:0.65rem;margin-bottom:6px">Grows through how you live — fight, farm, craft, trade, study…</div>'
     +['STR','DEX','CON','INT','WIS','CHA','SMY'].map(function(s){
       return '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#d1d5db;margin-bottom:2px"><span>'+s+'</span><span style="color:'+statColor(statGrade(c.mastery[s||10]))+';font-weight:700">'+statGrade(c.mastery[s]||10)+'</span></div>'+masteryProgressBar(s)+'</div>';
     }).join('')+'</div>':'')
