@@ -99,6 +99,31 @@
     },
     "cover_image": {
       "type": "string"
+    },
+    "world_type": {
+      "type": "string",
+      "enum": [
+        "private",
+        "event"
+      ],
+      "default": "private"
+    },
+    "continent_position": {
+      "type": "string",
+      "enum": [
+        "North",
+        "South",
+        "East",
+        "West",
+        "Central",
+        "Islands"
+      ]
+    },
+    "player_count": {
+      "type": "number"
+    },
+    "echo_narrative_story_url": {
+      "type": "string"
     }
   },
   "required": [],

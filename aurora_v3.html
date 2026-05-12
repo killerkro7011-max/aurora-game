@@ -1070,8 +1070,10 @@ function renderHome() {
     +'<p style="font-size:1.25rem;color:#d1d5db;margin-bottom:8px">You are the god here.</p>'
     +'<p style="color:#6b7280;margin-bottom:40px">Design a world. Enter it. Shape its story forever.</p>'
     +'<div style="display:flex;flex-direction:column;gap:16px;width:100%;max-width:18rem">'
-    +'<button id="btn-play" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter a World</button>'
-    +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'+'<button id="btn-import-world" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">📚 Import a Fictional World</button>'
+    +'<button id="btn-universe" style="background:linear-gradient(to right,#d97706,#ea580c);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1.125rem;font-weight:700;cursor:pointer">⚡ Enter the Universe</button>'
+    +'<button id="btn-play" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌌 My Worlds</button>'
+    +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'
+    +'<button id="btn-import-world" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">📚 Import a Fictional World</button>'
     +'<button id="btn-key" style="background:none;border:none;color:#6b7280;font-size:0.75rem;cursor:pointer;margin-top:8px">🔑 Change API Key</button>'
     +'</div></div>';
 }
@@ -1157,8 +1159,9 @@ function attachImportWorldEvents() {
 }
 
 function attachHomeEvents() {
-  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world');
-  if(bp) bp.addEventListener('click',function(){state.screen='worlds';render();});
+  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world'),bu=document.getElementById('btn-universe');
+  if(bu) bu.addEventListener('click',function(){state.screen='worlds';state.worldsTab='event';render();});
+  if(bp) bp.addEventListener('click',function(){state.screen='worlds';state.worldsTab='mine';render();});
   if(bc) bc.addEventListener('click',function(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();});
   if(bk) bk.addEventListener('click',function(){state.apiKey='';localStorage.removeItem(KEY_STORE);render();});
   if(bi) bi.addEventListener('click',function(){state.screen='importWorld';state.importError=null;state.importQuery='';render();});
@@ -1166,10 +1169,18 @@ function attachHomeEvents() {
 
 function renderWorlds() {
   var DC={Peaceful:'#4ade80',Low:'#60a5fa',Medium:'#facc15',High:'#fb923c',Extreme:'#f87171'};
-  var cards = state.worlds.length===0
-    ? '<div style="grid-column:span 2;text-align:center;padding:6rem 0"><div style="font-size:4rem;margin-bottom:20px">🌌</div><h2 style="font-size:1.5rem;font-weight:700;margin-bottom:8px">No worlds yet</h2><p style="color:#9ca3af;margin-bottom:32px">Every god starts somewhere.</p><button id="btn-first-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Create Your First World</button></div>'
-    : state.worlds.map(function(w,i){
-        return '<div class="world-card" data-i="'+i+'" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;cursor:pointer;transition:all 0.2s">'
+  var CONT_ICONS={'North':'🏔️','South':'🌴','East':'🌅','West':'🌊','Central':'⚡','Islands':'🏝️'};
+  var activeTab = state.worldsTab || 'mine';
+
+  // Private worlds (player-created)
+  var myWorlds = state.worlds.filter(function(w){ return !w.world_type || w.world_type==='private'; });
+  var eventWorlds = state.worlds.filter(function(w){ return w.world_type==='event'; });
+
+  var myCards = myWorlds.length===0
+    ? '<div style="grid-column:span 2;text-align:center;padding:5rem 0"><div style="font-size:3.5rem;margin-bottom:16px">🌌</div><h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">No worlds yet</h2><p style="color:#9ca3af;margin-bottom:28px">Every god starts somewhere.</p><button id="btn-first-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 28px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">✨ Create Your First World</button></div>'
+    : myWorlds.map(function(w,i){
+        var realIdx = state.worlds.indexOf(w);
+        return '<div class="world-card" data-i="'+realIdx+'" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;cursor:pointer;transition:all 0.2s">'
           +'<div style="display:flex;justify-content:space-between;margin-bottom:16px"><span style="font-size:2rem">'+SETTING_ICONS[w.setting]+'</span><span style="font-size:0.75rem;background:rgba(255,255,255,0.1);padding:4px 10px;border-radius:9999px;color:#d1d5db">📖 '+w.experience_mode+'</span></div>'
           +'<h3 style="font-size:1.25rem;font-weight:700;margin-bottom:4px">'+esc(w.name)+'</h3>'
           +(w.description?'<p style="color:#9ca3af;font-size:0.875rem;margin-bottom:16px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+esc(w.description)+'</p>':'')
@@ -1180,13 +1191,69 @@ function renderWorlds() {
           +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Climate</div><div style="color:#e5e7eb;font-weight:500">'+w.climate+'</div></div>'
           +'</div></div>';
       }).join('');
+
+  // Event world cards (the continents)
+  var eventCards = eventWorlds.length===0
+    ? '<div style="grid-column:span 2;text-align:center;padding:5rem 0">'
+      +'<div style="font-size:3.5rem;margin-bottom:16px">🗺️</div>'
+      +'<h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">No continents yet</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:8px">The Aurora universe is waiting to be shaped.</p>'
+      +'<p style="color:#6b7280;font-size:0.8rem">Event worlds are created by the Aurora team — the official continents of the shared universe.</p>'
+      +'</div>'
+    : eventWorlds.map(function(w,i){
+        var realIdx = state.worlds.indexOf(w);
+        var contIcon = CONT_ICONS[w.continent_position] || '🌍';
+        return '<div class="world-card" data-i="'+realIdx+'" style="background:linear-gradient(135deg,rgba(234,179,8,0.08),rgba(251,146,60,0.05));border:1px solid rgba(234,179,8,0.25);border-radius:16px;padding:24px;cursor:pointer;transition:all 0.2s;position:relative">'
+          +'<div style="position:absolute;top:12px;right:12px;background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.3);border-radius:20px;padding:3px 10px;font-size:0.7rem;color:#fbbf24;font-weight:700">⚡ OFFICIAL</div>'
+          +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
+          +'<span style="font-size:2.2rem">'+contIcon+'</span>'
+          +'<div><div style="font-size:0.7rem;color:#f59e0b;font-weight:600;letter-spacing:0.08em;text-transform:uppercase">'+(w.continent_position||'Continent')+'</div>'
+          +'<h3 style="font-size:1.2rem;font-weight:800;margin:2px 0">'+esc(w.name)+'</h3></div>'
+          +'</div>'
+          +(w.description?'<p style="color:#9ca3af;font-size:0.85rem;margin-bottom:16px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">'+esc(w.description)+'</p>':'')
+          +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.75rem;margin-bottom:14px">'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Setting</div><div style="color:#e5e7eb;font-weight:500">'+w.setting+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Magic</div><div style="color:#e5e7eb;font-weight:500">'+w.magic_level+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Danger</div><div style="font-weight:500;color:'+(DC[w.danger_level]||'white')+'">'+w.danger_level+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#6b7280">Players</div><div style="color:#fbbf24;font-weight:500">'+(w.player_count||0)+' active</div></div>'
+          +'</div>'
+          +(w.echo_narrative_story_url?'<a href="'+w.echo_narrative_story_url+'" target="_blank" onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:6px;color:#f59e0b;font-size:0.78rem;text-decoration:none;border:1px solid rgba(234,179,8,0.2);padding:5px 12px;border-radius:8px;background:rgba(234,179,8,0.06)">📖 Read the Lore ↗</a>':'')
+          +'</div>';
+      }).join('');
+
+  var tabBtnStyle = function(tab) {
+    var active = (state.worldsTab||'mine')===tab;
+    return 'padding:9px 20px;border-radius:10px;font-size:0.88rem;font-weight:700;cursor:pointer;border:none;transition:all 0.15s;'
+      +(active?'background:linear-gradient(to right,#9333ea,#ec4899);color:white;':'background:rgba(255,255,255,0.07);color:#9ca3af;');
+  };
+
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
-    +'<div><h1 style="font-size:1.5rem;font-weight:700">🌌 My Worlds</h1><p style="color:#9ca3af;font-size:0.875rem">You are the god here.</p></div>'
-    +'<div style="display:flex;gap:12px"><button id="btn-new-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer">+ New World</button>'
-    +'<button id="btn-home" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:12px;cursor:pointer;font-size:0.875rem">← Home</button></div>'
+    +'<div><h1 style="font-size:1.5rem;font-weight:700">🌌 Aurora Worlds</h1><p style="color:#9ca3af;font-size:0.875rem">Your realms & the shared universe.</p></div>'
+    +'<div style="display:flex;gap:10px">'
+    +'<button id="btn-new-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.85rem">+ New World</button>'
+    +'<button id="btn-home" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:12px;cursor:pointer;font-size:0.85rem">← Home</button>'
     +'</div>'
-    +'<div style="max-width:56rem;margin:0 auto;padding:40px 24px"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">'+cards+'</div></div></div>';
+    +'</div>'
+    // Tabs
+    +'<div style="max-width:56rem;margin:0 auto;padding:28px 24px 0">'
+    +'<div style="display:flex;gap:8px;margin-bottom:28px">'
+    +'<button id="tab-mine" style="'+tabBtnStyle('mine')+'">🌍 My Worlds</button>'
+    +'<button id="tab-event" style="'+tabBtnStyle('event')+'">⚡ Aurora Continents</button>'
+    +'</div>'
+    +(activeTab==='mine'
+      ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">'+myCards+'</div>'
+      : '<div>'
+        +'<div style="background:linear-gradient(135deg,rgba(234,179,8,0.08),rgba(251,146,60,0.04));border:1px solid rgba(234,179,8,0.15);border-radius:16px;padding:20px 24px;margin-bottom:24px;display:flex;gap:16px;align-items:flex-start">'
+        +'<div style="font-size:2rem">🌐</div>'
+        +'<div><h3 style="font-size:1rem;font-weight:700;color:#fbbf24;margin-bottom:4px">The Shared Universe</h3>'
+        +'<p style="color:#9ca3af;font-size:0.85rem;line-height:1.5">These are the official continents of Aurora — a shared world curated by the Aurora team. Enter one to live inside canon events alongside other players. Your choices here become history.</p>'
+        +'<a href="https://echo-narrative-flow.base44.app" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:#f59e0b;font-size:0.8rem;margin-top:10px;text-decoration:none">📖 Read the EchoNarrative chronicles ↗</a>'
+        +'</div></div>'
+        +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">'+eventCards+'</div>'
+        +'</div>'
+    )
+    +'</div></div>';
 }
 function attachWorldsEvents() {
   var h=document.getElementById('btn-home'),n=document.getElementById('btn-new-world'),f=document.getElementById('btn-first-world');
@@ -1194,6 +1261,9 @@ function attachWorldsEvents() {
   function goCreate(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();}
   if(n) n.addEventListener('click',goCreate);
   if(f) f.addEventListener('click',goCreate);
+  var tabMine=document.getElementById('tab-mine'),tabEvent=document.getElementById('tab-event');
+  if(tabMine) tabMine.addEventListener('click',function(){state.worldsTab='mine';render();});
+  if(tabEvent) tabEvent.addEventListener('click',function(){state.worldsTab='event';render();});
   document.querySelectorAll('.world-card').forEach(function(el){
     el.addEventListener('click',function(){state.currentWorld=state.worlds[parseInt(el.dataset.i)];state.screen='worldDetail';render();});
   });
@@ -1233,7 +1303,26 @@ function renderCreateWorld() {
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Description</label>'+aiAssistBtn('description','Generate')+'</div>'
       +'<textarea id="world-desc" placeholder="Describe your world briefly..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px">'+esc(w.description)+'</textarea>'
       +((state.aiSuggestionField==='description'||state.aiSuggestionField==='full')?suggestionBox():'')
-      +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:16px">Setting</h3>'+selectGridHtml(SETTINGS,SETTING_ICONS,'setting',w);
+      +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:16px">Setting</h3>'+selectGridHtml(SETTINGS,SETTING_ICONS,'setting',w)
+      +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:20px">World Type</h3>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
+      +'<button class="wtype-btn" data-wtype="private" style="text-align:left;padding:14px 16px;border-radius:12px;border:2px solid '+((!w.world_type||w.world_type==='private')?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+((!w.world_type||w.world_type==='private')?'rgba(147,51,234,0.15)':'rgba(255,255,255,0.05)')+';color:white;cursor:pointer">'
+      +'<div style="font-size:1.4rem;margin-bottom:4px">🌍</div><div style="font-weight:700;font-size:0.9rem">My World</div><div style="font-size:0.75rem;color:#9ca3af;margin-top:2px">Private or shared with friends</div></button>'
+      +'<button class="wtype-btn" data-wtype="event" style="text-align:left;padding:14px 16px;border-radius:12px;border:2px solid '+(w.world_type==='event'?'#d97706':'rgba(255,255,255,0.1)')+';background:'+(w.world_type==='event'?'rgba(217,119,6,0.15)':'rgba(255,255,255,0.05)')+';color:white;cursor:pointer">'
+      +'<div style="font-size:1.4rem;margin-bottom:4px">⚡</div><div style="font-weight:700;font-size:0.9rem">Aurora Continent</div><div style="font-size:0.75rem;color:#9ca3af;margin-top:2px">Official shared universe world</div></button>'
+      +'</div>'
+      +(w.world_type==='event'
+        ?'<h3 style="font-weight:600;margin-bottom:8px">Continent Position</h3>'
+         +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
+         +['North','South','East','West','Central','Islands'].map(function(pos){
+             var icons={'North':'🏔️','South':'🌴','East':'🌅','West':'🌊','Central':'⚡','Islands':'🏝️'};
+             var sel = w.continent_position===pos;
+             return '<button class="contpos-btn" data-pos="'+pos+'" style="padding:10px;border-radius:10px;border:2px solid '+(sel?'#d97706':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(217,119,6,0.1)':'rgba(255,255,255,0.04)')+';color:white;cursor:pointer;font-size:0.82rem;font-weight:600">'+icons[pos]+' '+pos+'</button>';
+           }).join('')
+         +'</div>'
+         +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:6px">EchoNarrative Lore URL (optional)</label>'
+         +'<input id="world-echo-url" type="text" placeholder="https://echo-narrative-flow.base44.app/..." value="'+esc(w.echo_narrative_story_url||'')+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px" />'
+        :'');
   } else if(step===1){
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Nature & Climate</h2><p style="color:#9ca3af;margin-bottom:24px">Shape the physical world.</p>'
       +'<h3 style="font-weight:600;margin-bottom:8px">Climate</h3>'+selectGridHtml(CLIMATES,CLIMATE_ICONS,'climate',w)
@@ -1285,6 +1374,12 @@ function renderCreateWorld() {
 function attachCreateWorldEvents() {
   var bback=document.getElementById('btn-back-worlds'),bprev=document.getElementById('btn-prev-step'),bnext=document.getElementById('btn-next-step'),bsave=document.getElementById('btn-save-world');
   if(bback) bback.addEventListener('click',function(){state.screen='worlds';render();});
+  document.querySelectorAll('.wtype-btn').forEach(function(b){
+    b.addEventListener('click',function(){state.draftWorld.world_type=b.dataset.wtype;collectWorldStep();render();});
+  });
+  document.querySelectorAll('.contpos-btn').forEach(function(b){
+    b.addEventListener('click',function(){state.draftWorld.continent_position=b.dataset.pos;collectWorldStep();render();});
+  });
   if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
   if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
   if(bsave) bsave.addEventListener('click',function(){collectWorldStep();var w=Object.assign({},state.draftWorld,{id:Date.now().toString(),status:'Active',created_date:new Date().toISOString()});state.worlds.push(w);save();state.currentWorld=w;state.screen='worldDetail';render();});
@@ -1324,6 +1419,7 @@ function attachCreateWorldEvents() {
 }
 function collectWorldStep() {
   var n=document.getElementById('world-name');if(n)state.draftWorld.name=n.value;
+  var eu=document.getElementById('world-echo-url');if(eu)state.draftWorld.echo_narrative_story_url=eu.value;
   var d=document.getElementById('world-desc');if(d)state.draftWorld.description=d.value;
   var f=document.getElementById('world-factions');if(f)state.draftWorld.factions=f.value;
   var l=document.getElementById('world-lore');if(l)state.draftWorld.lore=l.value;
