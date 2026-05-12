@@ -82,10 +82,68 @@ function freshWorld() {
 }
 function freshChar(worldId, worldName) {
   return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'',
-    stats:{ STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50 },
-    mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10 }
+    progression_mode: 'journey',
+    stats:{ STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, SMY:50 },
+    mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10, SMY:10 },
+    mastery_xp:{ STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 }
   };
 }
+// ── MASTERY ENGINE ──────────────────────────────────────────────────────────
+var STAT_XP_PER_LEVEL = 100; // mastery_xp needed to grow stat by 1 point
+var ACTION_WEIGHTS = {
+  combat:  { STR:3, DEX:2, CON:2, INT:0, WIS:0, CHA:0, SMY:1 },
+  ability: { STR:1, DEX:1, CON:0, INT:3, WIS:2, CHA:1, SMY:2 },
+  flee:    { STR:0, DEX:3, CON:1, INT:1, WIS:1, CHA:0, SMY:1 },
+  dialogue:{ STR:0, DEX:0, CON:0, INT:2, WIS:2, CHA:4, SMY:1 },
+  explore: { STR:1, DEX:1, CON:1, INT:2, WIS:2, CHA:0, SMY:2 },
+  rest:    { STR:0, DEX:0, CON:3, INT:1, WIS:2, CHA:0, SMY:3 },
+};
+
+function awardMasteryXP(actionType) {
+  var c = state.currentChar;
+  if (!c || c.progression_mode === 'legend') return [];
+  var weights = ACTION_WEIGHTS[actionType] || ACTION_WEIGHTS.explore;
+  var leveled = [];
+  var STATS = ['STR','DEX','CON','INT','WIS','CHA','SMY'];
+  STATS.forEach(function(s) {
+    var w = weights[s] || 0;
+    if (w === 0) return;
+    var xpGain = w * (1 + Math.random() * 0.5 | 0); // slight variance
+    c.mastery_xp[s] = (c.mastery_xp[s] || 0) + xpGain;
+    while (c.mastery_xp[s] >= STAT_XP_PER_LEVEL) {
+      c.mastery_xp[s] -= STAT_XP_PER_LEVEL;
+      // grow mastery, cap at 200
+      c.mastery[s] = Math.min(200, (c.mastery[s] || 10) + 1);
+      // every 10 mastery points, grow the stat itself
+      if (c.mastery[s] % 10 === 0) {
+        c.stats[s] = Math.min(200, (c.stats[s] || 50) + 1);
+      }
+      leveled.push(s);
+    }
+  });
+  // overall level = avg of all mastery grades mapped to 1-100
+  var totalMastery = STATS.reduce(function(a,s){ return a + (c.mastery[s]||10); }, 0);
+  c.level = Math.max(1, Math.floor(totalMastery / STATS.length / 2));
+  save();
+  return leveled;
+}
+
+function masteryProgressBar(stat) {
+  var c = state.currentChar;
+  if (!c) return '';
+  var xp = c.mastery_xp[stat] || 0;
+  var pct = Math.round((xp / STAT_XP_PER_LEVEL) * 100);
+  var grade = statGrade(c.mastery[stat] || 10);
+  var col = statColor(grade);
+  return '<div style="display:flex;align-items:center;gap:6px;font-size:0.7rem">'
+    +'<span style="color:'+col+';font-weight:700;width:28px">'+grade+'</span>'
+    +'<div style="flex:1;height:4px;background:rgba(255,255,255,0.1);border-radius:4px">'
+    +'<div style="width:'+pct+'%;height:100%;background:'+col+';border-radius:4px;transition:width 0.4s"></div>'
+    +'</div>'
+    +'<span style="color:#6b7280;width:28px;text-align:right">'+pct+'%</span>'
+    +'</div>';
+}
+
 function statGrade(v) { if(v>=151)return 'A'; if(v>=111)return 'B'; if(v>=71)return 'C'; if(v>=41)return 'D'; return 'E'; }
 function statColor(g) { return {A:'#4ade80',B:'#60a5fa',C:'#facc15',D:'#f97316',E:'#f87171'}[g]||'#9ca3af'; }
 function masteryStart(level) { if(level>=91)return 150; if(level>=61)return 110; if(level>=31)return 70; if(level>=11)return 40; return 10; }
@@ -254,7 +312,8 @@ function buildSystemPrompt() {
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
     + '- Inventory: ' + c.inventory + '\n'
     + '- Location: ' + (c.current_location || w.name) + '\n'
-    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + '\n\n'
+    + '- Stats: STR ' + (c.stats.STR||50) + '(' + statGrade(c.stats.STR||50) + ') DEX ' + (c.stats.DEX||50) + '(' + statGrade(c.stats.DEX||50) + ') INT ' + (c.stats.INT||50) + '(' + statGrade(c.stats.INT||50) + ') CHA ' + (c.stats.CHA||50) + '(' + statGrade(c.stats.CHA||50) + ') SMY ' + (c.stats.SMY||50) + '(' + statGrade(c.stats.SMY||50) + ')\n'
+    + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + ' | Mode: ' + (c.progression_mode==='legend'?'Legend (no growth)':'Journey (mastery-driven)') + '\n\n'
     + 'CAMPAIGN MEMORY (full history so far):\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
     + 'KNOWN NPCs:\n' + npcCtx + '\n\n'
     + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
@@ -365,6 +424,14 @@ async function sendMessage(text) {
   } catch(e) {
     state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
   }
+  // Award mastery XP for dialogue/exploration
+  if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
+    var leveled = awardMasteryXP('dialogue');
+    if (leveled.length > 0) {
+      var c = state.currentChar;
+      state.messages.push({ role:'system', text:'✨ ' + leveled.map(function(s){ return s+' mastery +1 ('+statGrade(c.mastery[s])+')'; }).join(' · ') });
+    }
+  }
   state.loading = false;
   render();
   scrollToBottom();
@@ -385,6 +452,11 @@ async function doCombatAction(label, type, icon) {
       state.messages.push({ role:'narrator', text: parsed.cleanText, id: Date.now()+2 });
       addToMemory('narrator', parsed.cleanText);
     } catch(e) {}
+    // Mastery for flee attempt
+    if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
+      var fl = awardMasteryXP('flee');
+      if (fl.length > 0) { var fc = state.currentChar; state.messages.push({ role:'system', text:'🏃 ' + fl.map(function(s){ return s+' mastery +1 ('+statGrade(fc.mastery[s])+')'; }).join(' · ') }); }
+    }
     state.loading = false; render(); scrollToBottom();
     return;
   }
@@ -412,6 +484,12 @@ async function doCombatAction(label, type, icon) {
     state.turnCount++;
     if (state.turnCount % 10 === 0 && state.recentMemory.length >= 8) await runRollingSummary();
   } catch(e) { state.messages.push({ role:'narrator', text: 'The battle rages on...', id: Date.now()+2 }); }
+  // Mastery for combat action
+  if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
+    var actionTag2 = type === 'ability' ? 'ability' : 'combat';
+    var cl = awardMasteryXP(actionTag2);
+    if (cl.length > 0) { var cc2 = state.currentChar; state.messages.push({ role:'system', text:'⚔️ ' + cl.map(function(s){ return s+' mastery +1 ('+statGrade(cc2.mastery[s])+')'; }).join(' · ') }); }
+  }
   state.loading = false; render(); scrollToBottom();
 }
 
@@ -1328,7 +1406,21 @@ function renderCreateChar() {
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
       +'<textarea id="char-inventory" rows="3" placeholder="Items you carry..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
   } else if(step===4){
-    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes how the world reacts to you.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>';
+    var isJourney = (c.progression_mode||'journey')==='journey';
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes how the world reacts to you.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>'
+    +'<div style="margin-top:32px"><h3 style="font-size:1.1rem;font-weight:700;margin-bottom:6px">Progression Mode</h3><p style="color:#9ca3af;font-size:0.85rem;margin-bottom:16px">How do you want to grow in this world?</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+    +'<button class="prog-btn" data-mode="journey" style="text-align:left;padding:18px;border-radius:16px;border:2px solid '+(isJourney?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(isJourney?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:white;cursor:pointer">'
+    +'<div style="font-size:1.6rem;margin-bottom:8px">🌱</div>'
+    +'<div style="font-weight:700;font-size:0.95rem">Start Your Journey</div>'
+    +'<div style="font-size:0.78rem;color:#9ca3af;margin-top:4px">Stats grow through what you do. Fight to build STR. Talk to grow CHA. Become who you play.</div>'
+    +'</button>'
+    +'<button class="prog-btn" data-mode="legend" style="text-align:left;padding:18px;border-radius:16px;border:2px solid '+(!isJourney?'#f59e0b':'rgba(255,255,255,0.1)')+';background:'+(!isJourney?'rgba(245,158,11,0.15)':'rgba(255,255,255,0.05)')+';color:white;cursor:pointer">'
+    +'<div style="font-size:1.6rem;margin-bottom:8px">⚡</div>'
+    +'<div style="font-weight:700;font-size:0.95rem">Begin Your Legend</div>'
+    +'<div style="font-size:0.78rem;color:#9ca3af;margin-top:4px">Full power from day one. No grinding, no gates. Pure story — you are already who you need to be.</div>'
+    +'</button>'
+    +'</div></div>';
   }
   var isLast=step===CHAR_STEPS.length-1;
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)"><div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px"><button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'+stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div><div style="max-width:40rem;margin:0 auto;padding:40px 24px">'+body+'<div style="display:flex;justify-content:space-between;margin-top:40px">'+(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')+(!isLast?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>':'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter the World</button>')+vesperChatHtml('char')+'</div></div></div>';
@@ -1341,6 +1433,7 @@ function attachCreateCharEvents() {
   if(bs) bs.addEventListener('click',function(){collectCharStep();applyMasteryForLevel(state.draftChar);var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
   document.querySelectorAll('.preset-btn').forEach(function(b){b.addEventListener('click',function(){var cls=b.dataset.cls,p=CLASS_PRESETS[cls];state.draftChar.class=cls;if(p){var st={};['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){st[s]=p[s]||50;});state.draftChar.stats=st;}render();});});
   document.querySelectorAll('.align-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});});
+  document.querySelectorAll('.prog-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.progression_mode=b.dataset.mode;render();});});
   var lvS=document.getElementById('char-level'),lvD=document.getElementById('level-display');
   if(lvS){lvS.addEventListener('input',function(){state.draftChar.level=parseInt(lvS.value)||1;if(lvD)lvD.textContent='Lv '+lvS.value;});}
   document.querySelectorAll('.stat-slider').forEach(function(sl){sl.addEventListener('input',function(){if(!state.draftChar.stats)state.draftChar.stats={};state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;});});
@@ -1503,6 +1596,10 @@ function renderPlay() {
     +'</div>'
     +hpBar(state.charHP,100,c.name+"'s Health")
     +(state.inCombat&&state.enemy?'<div style="margin-top:8px">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div>':'')
+    +(c.progression_mode!=='legend'?'<div style="margin-top:12px"><div style="color:#9ca3af;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;margin-bottom:6px">MASTERY</div>'
+    +['STR','DEX','CON','INT','WIS','CHA','SMY'].map(function(s){
+      return '<div style="margin-bottom:5px"><div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#d1d5db;margin-bottom:2px"><span>'+s+'</span><span style="color:'+statColor(statGrade(c.mastery[s||10]))+';font-weight:700">'+statGrade(c.mastery[s]||10)+'</span></div>'+masteryProgressBar(s)+'</div>';
+    }).join('')+'</div>':'')
     +'</div></div>':'';
 
   var combatBars=state.inCombat&&state.enemy&&!state.showStats?'<div style="border-bottom:1px solid rgba(127,29,29,0.3);background:rgba(0,0,0,0.6);padding:8px 16px;flex-shrink:0"><div style="max-width:42rem;margin:0 auto;display:flex;align-items:center;gap:16px"><div style="flex:1">'+hpBar(state.charHP,100,c.name)+'</div><span style="color:#f87171;font-weight:700;font-size:1.25rem">⚔️</span><div style="flex:1">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div></div></div>':'';
