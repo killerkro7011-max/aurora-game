@@ -1271,10 +1271,157 @@ function suggestionBox() {
 
 // ---- RENDER ----
 // ── INVENTORY PANEL ───────────────────────────────────────────────────────────
+function statGradeColor(v) {
+  if(v>=151) return '#a855f7'; // A — purple
+  if(v>=111) return '#3b82f6'; // B — blue
+  if(v>=71)  return '#22c55e'; // C — green
+  if(v>=41)  return '#f59e0b'; // D — amber
+  return '#ef4444';             // E — red
+}
+
+function renderStatSheet() {
+  var c = state.currentChar;
+  if (!c) return '<div style="padding:20px;color:#6b7280;text-align:center">No character loaded.</div>';
+
+  var stats = c.stats || { STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, SMY:50 };
+  var mastery = c.mastery || { STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10, SMY:10 };
+  var mastery_xp = c.mastery_xp || { STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 };
+
+  // mastery cap by level
+  var lvl = c.level || 1;
+  var cap = lvl<=10?10:lvl<=30?40:lvl<=60?70:lvl<=90?110:150;
+
+  var statMeta = {
+    STR: { icon:'💪', label:'Strength',      desc:'Melee power, carry weight, physical feats' },
+    DEX: { icon:'🎯', label:'Dexterity',     desc:'Speed, precision, stealth, ranged attacks' },
+    CON: { icon:'❤️', label:'Constitution',  desc:'Health pool, endurance, disease resistance' },
+    INT: { icon:'📚', label:'Intelligence',  desc:'Magic potency, crafting, knowledge checks' },
+    WIS: { icon:'🌿', label:'Wisdom',        desc:'Perception, survival, spiritual awareness' },
+    CHA: { icon:'🎭', label:'Charisma',      desc:'Persuasion, trade prices, social influence' },
+    SMY: { icon:'🧘', label:'Self Mastery',  desc:'Focus, willpower, resistance to corruption' },
+  };
+
+  var gradeLabels = { A:'A', B:'B', C:'C', D:'D', E:'E' };
+
+  // equipped items summary
+  var inv = getInventory();
+  var equipped = inv.filter(function(i){ return i.equipped; });
+
+  var equippedHtml = equipped.length === 0
+    ? '<div style="color:#4b5563;font-size:0.78rem;padding:8px 0">Nothing equipped</div>'
+    : equipped.map(function(item){
+        var rc = ITEM_RARITIES[item.rarity] || '#9ca3af';
+        var typeIcon = {weapon:'⚔️',armor:'🛡️',consumable:'🧪',tool:'🔧',material:'🪨',misc:'📦'}[item.type]||'📦';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.2);margin-bottom:4px">'
+          +'<span style="font-size:0.9rem">'+typeIcon+'</span>'
+          +'<span style="font-size:0.8rem;font-weight:600;color:'+rc+'">'+esc(item.name)+'</span>'
+          +(item.effect?'<span style="font-size:0.68rem;color:#6b7280;margin-left:auto">'+esc(item.effect)+'</span>':'')
+          +'</div>';
+      }).join('');
+
+  var statRows = ['STR','DEX','CON','INT','WIS','CHA','SMY'].map(function(s) {
+    var val = stats[s] || 10;
+    var mxp = mastery_xp[s] || 0;
+    var grade = statGrade(val);
+    var gradeCol = statGradeColor(val);
+    var pct = Math.min(100, Math.round((mxp / STAT_XP_PER_LEVEL) * 100));
+    var meta = statMeta[s];
+    var capPct = Math.min(100, Math.round((val / 200) * 100));
+
+    return '<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)">'
+      // top row: icon + label + grade badge + value
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      +'<span style="font-size:1rem;width:20px;text-align:center">'+meta.icon+'</span>'
+      +'<div style="flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px">'
+      +'<span style="font-size:0.82rem;font-weight:700;color:#e5e7eb">'+meta.label+'</span>'
+      +'<span style="font-size:0.68rem;font-weight:800;padding:1px 7px;border-radius:9999px;background:'+gradeCol+'22;color:'+gradeCol+';border:1px solid '+gradeCol+'55">'+grade+'</span>'
+      +'</div>'
+      +'<div style="font-size:0.68rem;color:#4b5563;margin-top:1px">'+meta.desc+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0">'
+      +'<div style="font-size:1.1rem;font-weight:800;color:'+gradeCol+'">'+val+'</div>'
+      +'<div style="font-size:0.62rem;color:#4b5563">/ 200</div>'
+      +'</div>'
+      +'</div>'
+      // stat bar
+      +'<div style="height:5px;background:rgba(255,255,255,0.07);border-radius:9999px;margin-bottom:4px;overflow:hidden">'
+      +'<div style="height:100%;width:'+capPct+'%;background:'+gradeCol+';border-radius:9999px;transition:width 0.3s"></div>'
+      +'</div>'
+      // mastery xp bar
+      +(c.progressionMode !== 'legend' ?
+        '<div style="display:flex;align-items:center;gap:6px">'
+        +'<div style="flex:1;height:3px;background:rgba(255,255,255,0.05);border-radius:9999px;overflow:hidden">'
+        +'<div style="height:100%;width:'+pct+'%;background:rgba(168,85,247,0.5);border-radius:9999px;transition:width 0.3s"></div>'
+        +'</div>'
+        +'<span style="font-size:0.62rem;color:#6b7280;flex-shrink:0">'+mxp+'/'+STAT_XP_PER_LEVEL+' xp</span>'
+        +'</div>'
+      : '')
+      +'</div>';
+  }).join('');
+
+  // character header
+  var alignColor = {Good:'#4ade80',Neutral:'#9ca3af',Evil:'#f87171','Chaotic Good':'#60a5fa','Lawful Good':'#34d399','Chaotic Evil':'#fb923c','Lawful Evil':'#f87171','True Neutral':'#9ca3af'}[c.alignment||'Neutral']||'#9ca3af';
+
+  return '<div style="padding:14px">'
+    // character card
+    +'<div style="background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(236,72,153,0.08));border:1px solid rgba(124,58,237,0.25);border-radius:12px;padding:14px;margin-bottom:14px">'
+    +'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+    +'<div style="font-size:2rem">'+({Warrior:'⚔️',Mage:'🔮',Rogue:'🗡️',Ranger:'🏹',Paladin:'🛡️',Bard:'🎵',Druid:'🌿',Necromancer:'💀',Monk:'🧘',Cleric:'✨',Berserker:'🪓',Assassin:'🌑',Scholar:'📖',Merchant:'💰',Farmer:'🌾',Blacksmith:'🔨',Hunter:'🦅',Herbalist:'🌿',Chef:'🍳',Duelist:'🤺',Shaman:'🔥',Archivist:'📜'}[c.class||'']||'🧙')+'</div>'
+    +'<div style="flex:1">'
+    +'<div style="font-size:0.95rem;font-weight:800;color:white">'+esc(c.name||'Unknown')+'</div>'
+    +'<div style="font-size:0.75rem;color:#9ca3af">'+esc(c.class||'')+'  ·  Level '+( c.level||1)+'</div>'
+    +'</div>'
+    +'<div style="text-align:right">'
+    +'<div style="font-size:0.7rem;color:'+alignColor+';border:1px solid '+alignColor+'44;padding:2px 8px;border-radius:9999px">'+esc(c.alignment||'Neutral')+'</div>'
+    +(c.progressionMode==='legend'
+      ? '<div style="font-size:0.62rem;color:#f59e0b;margin-top:4px">⚡ Legend Mode</div>'
+      : '<div style="font-size:0.62rem;color:#a855f7;margin-top:4px">🌱 Journey Mode · Cap '+cap+'</div>')
+    +'</div>'
+    +'</div>'
+    // HP + XP mini bars
+    +'<div style="display:flex;gap:12px">'
+    +'<div style="flex:1">'
+    +'<div style="font-size:0.65rem;color:#6b7280;margin-bottom:3px">❤️ HP  '+Math.round(state.charHP||0)+' / '+Math.round(c.stats&&c.stats.CON?c.stats.CON:50)+'</div>'
+    +'<div style="height:5px;background:rgba(255,255,255,0.07);border-radius:9999px;overflow:hidden">'
+    +'<div style="height:100%;width:'+Math.min(100,Math.round(((state.charHP||0)/(c.stats&&c.stats.CON?c.stats.CON:50))*100))+'%;background:#ef4444;border-radius:9999px"></div>'
+    +'</div>'
+    +'</div>'
+    +'<div style="flex:1">'
+    +'<div style="font-size:0.65rem;color:#6b7280;margin-bottom:3px">⭐ XP  '+(c.experience||0)+' / '+((c.level||1)*100)+'</div>'
+    +'<div style="height:5px;background:rgba(255,255,255,0.07);border-radius:9999px;overflow:hidden">'
+    +'<div style="height:100%;width:'+Math.min(100,Math.round(((c.experience||0)/((c.level||1)*100))*100))+'%;background:#f59e0b;border-radius:9999px"></div>'
+    +'</div>'
+    +'</div>'
+    +'</div>'
+    +'</div>'
+    // stats
+    +'<div style="margin-bottom:14px">'+statRows+'</div>'
+    // equipped gear
+    +'<div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:12px">'
+    +'<div style="font-size:0.72rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">⚙️ Equipped Gear</div>'
+    +equippedHtml
+    +'</div>'
+    // gold + location
+    +'<div style="display:flex;gap:8px;margin-top:12px">'
+    +'<div style="flex:1;background:rgba(250,204,21,0.06);border:1px solid rgba(250,204,21,0.15);border-radius:8px;padding:8px;text-align:center">'
+    +'<div style="font-size:0.65rem;color:#6b7280">Gold</div>'
+    +'<div style="font-size:1rem;font-weight:800;color:#facc15">'+state.gold+'g</div>'
+    +'</div>'
+    +'<div style="flex:2;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px">'
+    +'<div style="font-size:0.65rem;color:#6b7280;margin-bottom:2px">📍 Location</div>'
+    +'<div style="font-size:0.78rem;color:#e5e7eb;font-weight:600">'+esc(c.current_location||'Unknown')+'</div>'
+    +'</div>'
+    +'</div>'
+    +'</div>';
+}
+
 function renderInventoryPanel() {
   var inv = getInventory();
   var c = state.currentChar;
   var slots = inv.length + '/' + MAX_SLOTS;
+  var activeTab = state.invTab || 'items';
+
   var itemRows = inv.length === 0
     ? '<div style="text-align:center;padding:40px 0;color:#4b5563"><div style="font-size:2rem;margin-bottom:8px">🎒</div><div>Your pack is empty.</div></div>'
     : inv.map(function(item) {
@@ -1299,16 +1446,29 @@ function renderInventoryPanel() {
       }).join('');
 
   return '<div style="position:fixed;top:0;right:0;width:320px;height:100vh;background:#0a0a14;border-left:1px solid rgba(255,255,255,0.1);z-index:150;display:flex;flex-direction:column;overflow:hidden">'
-    +'<div style="padding:16px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between">'
-    +'<div><div style="font-weight:700;font-size:0.9rem">🎒 Inventory</div>'
-    +'<div style="font-size:0.72rem;color:#9ca3af">'+slots+' slots · <span style="color:#facc15">💰 '+state.gold+'g</span></div></div>'
+    // header
+    +'<div style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+    +'<div>'
+    +'<div style="font-weight:700;font-size:0.88rem;color:white">'+( activeTab==='stats' ? '📊 Character Sheet' : '🎒 Inventory' )+'</div>'
+    +'<div style="font-size:0.68rem;color:#9ca3af">'+( activeTab==='stats' ? esc((c&&c.name)||'Character') : slots+' slots · <span style=\'color:#facc15\'>💰 '+state.gold+'g</span>' )+'</div>'
+    +'</div>'
     +'<div style="display:flex;gap:6px">'
-    +'<button id="btn-open-shop" style="font-size:0.72rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(250,204,21,0.3);background:rgba(250,204,21,0.1);color:#facc15;cursor:pointer">🏪 Shop</button>'
+    +(activeTab==='items'?'<button id="btn-open-shop" style="font-size:0.7rem;padding:5px 10px;border-radius:8px;border:1px solid rgba(250,204,21,0.3);background:rgba(250,204,21,0.1);color:#facc15;cursor:pointer">🏪 Shop</button>':'')
     +'<button id="btn-close-inv" style="background:none;border:none;color:#6b7280;font-size:1rem;cursor:pointer">✕</button>'
-    +'</div></div>'
-    +'<div style="flex:1;overflow-y:auto;padding:12px">'+itemRows+'</div>'
+    +'</div>'
+    +'</div>'
+    // tabs
+    +'<div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">'
+    +'<button id="inv-tab-items" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='items'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='items'?'#a855f7':'#6b7280')+'">🎒 Items</button>'
+    +'<button id="inv-tab-stats" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='stats'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='stats'?'#a855f7':'#6b7280')+'">📊 Stats</button>'
+    +'</div>'
+    // content
+    +'<div style="flex:1;overflow-y:auto;padding:'+(activeTab==='stats'?'0':'12px')+'">'
+    +(activeTab==='stats' ? renderStatSheet() : itemRows)
+    +'</div>'
     +'</div>';
 }
+
 
 // ── SHOP PANEL ────────────────────────────────────────────────────────────────
 function renderShopPanel() {
@@ -2431,6 +2591,11 @@ function attachPlayEvents() {
   if(ti) ti.addEventListener('click',function(){state.showInventory=!state.showInventory;if(!state.showInventory)state.showShop=false;render();});
   var ci=document.getElementById('btn-close-inv');
   if(ci) ci.addEventListener('click',function(){state.showInventory=false;state.showShop=false;render();});
+  // Inventory tabs
+  var tabItems=document.getElementById('inv-tab-items');
+  var tabStats=document.getElementById('inv-tab-stats');
+  if(tabItems) tabItems.addEventListener('click',function(){state.invTab='items';render();});
+  if(tabStats) tabStats.addEventListener('click',function(){state.invTab='stats';render();});
   var os=document.getElementById('btn-open-shop');
   if(os) os.addEventListener('click',function(){generateShop('general');});
   var cs=document.getElementById('btn-close-shop');
