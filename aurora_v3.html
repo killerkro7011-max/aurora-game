@@ -338,7 +338,7 @@ var ACTION_EMOJI = {
   rest:'😴', pray:'🙏', perform:'🎭', write:'✍️',
 };
 
-// Detect the dominant action type from a player's free-text input
+// Detect the dominant action type from a player\'s free-text input
 function detectActionType(text) {
   var lower = text.toLowerCase();
   var words = lower.split(/\W+/);
@@ -519,7 +519,7 @@ async function runRollingSummary() {
       if (state.keyEvents.length > 20) state.keyEvents = state.keyEvents.slice(-20);
     }
 
-    // Clear recent memory — it's now in the summary
+    // Clear recent memory — it\'s now in the summary
     state.recentMemory = [];
 
   } catch(e) {
@@ -690,7 +690,7 @@ async function sendMessage(text) {
   } catch(e) {
     state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
   }
-  // Award mastery XP — detect life path from player's actual words
+  // Award mastery XP — detect life path from player\'s actual words
   var detectedAction = detectActionType(text);
   if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
     var leveled = awardMasteryXP(detectedAction);
@@ -960,7 +960,7 @@ async function aiAssistWorld(type) {
     rules_of_nature: 'You are a master world-builder. Context: '+ctx+'. Design a unique magic or power system. Cover: the source of power, who can access it, what it physically costs or risks to use, and one hard rule that creates dramatic tension. 4-5 sentences. Return ONLY the text.',
     gods_religion: 'You are a master world-builder. Context: '+ctx+'. Design the faith and gods of this world. Cover: how many gods exist and are they real and active, what they demand of mortals, what the clergy look like and do, and what happens to those who reject or defy faith. 4-5 sentences. Return ONLY the text.',
     languages_cultures: 'You are a master world-builder. Context: '+ctx+'. Describe the cultures of this world. Cover: the 2-3 dominant cultural groups and how they differ, a notable custom that would surprise an outsider, naming conventions that feel distinct, and one deep cultural tension causing conflict. Return ONLY the text.',
-    economy_resources: 'You are a master world-builder. Context: '+ctx+'. Describe this world's economy. Cover: the most scarce resource and who fights for it, what is abundant and undervalued, what the currency or trade system is, and one black market or criminal economy that thrives. 3-4 sentences. Return ONLY the text.',
+    economy_resources: 'You are a master world-builder. Context: '+ctx+'. Describe this world\'s economy. Cover: the most scarce resource and who fights for it, what is abundant and undervalued, what the currency or trade system is, and one black market or criminal economy that thrives. 3-4 sentences. Return ONLY the text.',
     secrets_mysteries: 'You are a master world-builder. Context: '+ctx+'. Create 3 deep, world-defining secrets — things hidden, forbidden, or unknown. Each secret, if revealed, should fundamentally change how a player sees everything. Make them feel earned and layered, not cheap twists. Number them 1-3. Return ONLY the text.',
     full: '',
   };
@@ -1049,7 +1049,7 @@ async function generateRandomWorld() {
     'A world where every person is born with one ghost companion who knows their future death',
     'A post-apocalyptic world reclaiming itself as nature wars with the remnants of ancient tech',
     'A theocracy crumbling after their god actually returned — and no one liked what it said',
-    'A world where the dead can be reborn, but only in a different person's body, causing identity wars',
+    'A world where the dead can be reborn, but only in a different person\'s body, causing identity wars',
     'A jungle world where every plant is sentient and humanity lives in negotiated peace with the forest',
     'A world locked in a time loop — a single generation has relived the same century for millennia',
     'A feudal world built on the bones of giants, literally — ancient skeletons form the mountains',
@@ -1294,7 +1294,7 @@ function renderStatSheet() {
   var statMeta = {
     STR: { icon:'💪', label:'Strength',      desc:'Melee power, carry weight, physical feats' },
     DEX: { icon:'🎯', label:'Dexterity',     desc:'Speed, precision, stealth, ranged attacks' },
-    CON: { icon:'❤️', label:'Constitution',  desc:'Health pool, endurance, disease resistance' },
+    CON: { icon:'❤', label:'Constitution',  desc:'Health pool, endurance, disease resistance' },
     INT: { icon:'📚', label:'Intelligence',  desc:'Magic potency, crafting, knowledge checks' },
     WIS: { icon:'🌿', label:'Wisdom',        desc:'Perception, survival, spiritual awareness' },
     CHA: { icon:'🎭', label:'Charisma',      desc:'Persuasion, trade prices, social influence' },
@@ -1382,7 +1382,7 @@ function renderStatSheet() {
     // HP + XP mini bars
     +'<div style="display:flex;gap:12px">'
     +'<div style="flex:1">'
-    +'<div style="font-size:0.65rem;color:#6b7280;margin-bottom:3px">❤️ HP  '+Math.round(state.charHP||0)+' / '+Math.round(c.stats&&c.stats.CON?c.stats.CON:50)+'</div>'
+    +'<div style="font-size:0.65rem;color:#6b7280;margin-bottom:3px">❤ HP  '+Math.round(state.charHP||0)+' / '+Math.round(c.stats&&c.stats.CON?c.stats.CON:50)+'</div>'
     +'<div style="height:5px;background:rgba(255,255,255,0.07);border-radius:9999px;overflow:hidden">'
     +'<div style="height:100%;width:'+Math.min(100,Math.round(((state.charHP||0)/(c.stats&&c.stats.CON?c.stats.CON:50))*100))+'%;background:#ef4444;border-radius:9999px"></div>'
     +'</div>'
@@ -1565,7 +1565,7 @@ var COBUILD_FIELD_QUESTIONS = {
   gods_religion: "Do gods exist here, and do people know it? What do they demand — and what happens to people who say no?",
   languages_cultures: "What do people *look like* here, how do they talk, and what would get you killed for doing in polite company?",
   economy_resources: "What does everyone want that no one has enough of? And what's the currency — coin, favors, blood?",
-  secrets_mysteries: "Every world has things it doesn't want found. What's hidden here that would change everything if someone figured it out?",
+  secrets_mysteries: "Every world has things it doesn\'t want found. What's hidden here that would change everything if someone figured it out?",
   tone_themes:  "What's the *mood*? Is this grimdark, epic, cozy, political, horrifying — or some weird mix?",
   world_feel:   "If someone played 10 minutes and put the game down, what feeling should be sitting in their chest?"
 };
@@ -1578,7 +1578,7 @@ Rules:
 1. Ask ONE question at a time. Never ask multiple questions in the same message.
 2. React to what they say first — acknowledge it, add a thought, maybe push on it. Then ask the next question.
 3. Be vivid and specific. If they say "dark forest" ask what's *in* the dark forest. If they say "magic exists" ask what it costs.
-4. You have opinions. If something doesn't make sense or conflicts, say so gently. "Wait — if the gods are dead, who's running the clergy?" 
+4. You have opinions. If something doesn\'t make sense or conflicts, say so gently. "Wait — if the gods are dead, who's running the clergy?" 
 5. You can suggest, not just ask. "What if the empire collapsed because the ocean is rising — does that work?" 
 6. Keep messages SHORT — 2-4 sentences max. This is a conversation, not an essay.
 7. Never break character. You are Vesper the world-builder, not an AI assistant.
@@ -2202,7 +2202,7 @@ function renderCreateWorld() {
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Tone & Secrets</h2><p style="color:#9ca3af;margin-bottom:24px">The soul of your world — what it feels like to live here.</p>'
       +'<div style="margin-bottom:20px">'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">World Feel <span style="color:#6b7280;font-size:0.8rem">(one sentence — your gut instinct)</span></label>'
-      +'<input id="world-feel" type="text" placeholder='e.g. "This world feels like a dying empire where even the heroes are compromised..."' value="'+esc(w.world_feel||'')+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px" />'
+      +'<input id="world-feel" type="text" placeholder="e.g. This world feels like a dying empire where even the heroes are compromised..." value="'+esc(w.world_feel||'')+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px" />'
       +'</div>'
       +'<div style="margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Tone & Themes</label>'
       +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
