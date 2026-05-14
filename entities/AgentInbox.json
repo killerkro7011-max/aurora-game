@@ -1,0 +1,54 @@
+{
+  "type": "object",
+  "properties": {
+    "from_agent": {
+      "type": "string"
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "world_event",
+        "npc_update",
+        "faction_change",
+        "quest_update",
+        "lore_addition",
+        "general_task",
+        "other"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "done",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "response": {
+      "type": "string"
+    },
+    "world_id": {
+      "type": "string"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "default": "normal"
+    }
+  },
+  "required": [],
+  "name": "AgentInbox"
+}
