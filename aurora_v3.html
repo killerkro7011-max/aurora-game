@@ -45,7 +45,10 @@ let state = {
   messages: [],
   recentMemory: [],        // last ~10 raw exchanges
   campaignSummary: '',     // rolling AI-compressed summary of whole campaign
-  npcs: [],                // [{name, attitude, notes}]
+  npcs: [],                // [{name, attitude, notes, goals, secrets, relationships, history, lastSeen, location}]
+  npcTimeline: [],         // [{turn, npcName, event}] — world events NPCs witnessed
+  factionRep: {},          // {factionName: -100 to 100} player reputation per faction
+  campaignTimeline: [],    // [{turn, title, summary}] named story beats
   quests: [],              // [{title, status, desc}]
   keyEvents: [],           // [{turn, text}]
   loading: false,
@@ -474,17 +477,29 @@ async function runRollingSummary() {
     return (m.role === 'player' ? 'PLAYER: ' : 'NARRATOR: ') + m.text;
   }).join('\n\n');
 
-  var prompt = 'You are a campaign scribe for an RPG. Update the campaign record based on recent events.\n\n'
-    + 'PREVIOUS SUMMARY:\n' + (state.campaignSummary || '(Campaign just began.)') + '\n\n'
-    + 'RECENT EVENTS:\n' + recentText + '\n\n'
-    + 'Return a JSON object with these exact keys:\n'
+  // Build existing NPC snapshot for context
+  var npcSnapshot = state.npcs.map(function(n){
+    return n.name + ' (' + n.attitude + ')' + (n.goals ? ' | Goals: ' + n.goals : '') + (n.lastSeen ? ' | Last seen turn ' + n.lastSeen : '');
+  }).join('; ') || 'None yet.';
+
+  var factionSnap = Object.keys(state.factionRep||{}).map(function(f){ return f+': '+state.factionRep[f]; }).join(', ') || 'None tracked.';
+
+  var prompt = 'You are a master campaign scribe for a living RPG world. Update ALL records based on recent events.\n\n'
+    + 'PREVIOUS CAMPAIGN SUMMARY:\n' + (state.campaignSummary || '(Campaign just began.)') + '\n\n'
+    + 'KNOWN NPCs:\n' + npcSnapshot + '\n\n'
+    + 'FACTION REPUTATIONS:\n' + factionSnap + '\n\n'
+    + 'RECENT EVENTS (last ' + state.recentMemory.length + ' exchanges):\n' + recentText + '\n\n'
+    + 'Return a JSON object with these EXACT keys (no extras, no markdown):\n'
     + '{\n'
-    + '  "summary": "Updated 3-5 sentence campaign summary covering all major events so far",\n'
-    + '  "new_npcs": [{"name":"...","attitude":"friendly|neutral|hostile","notes":"one sentence about them"}],\n'
+    + '  "summary": "Rich 5-8 sentence campaign summary. Name specific people, places, and consequences. Make it feel like a real chronicle.",\n'
+    + '  "timeline_event": {"title": "Short event title", "summary": "1-2 sentences — what happened and why it matters"},\n'
+    + '  "new_npcs": [{"name":"...","attitude":"friendly|neutral|hostile","notes":"what they did/said","goals":"what they want","secrets":"what they are hiding (or null)","relationships":"ties to other NPCs or factions (or null)","location":"where they are now"}],\n'
+    + '  "npc_updates": [{"name":"existing NPC name","attitude":"updated if changed (or null)","notes":"new info to append","goals":"updated goal (or null)","location":"updated location (or null)","lastSeen":' + state.turnCount + '}],\n'
+    + '  "faction_rep_changes": [{"faction":"faction name","delta":-10,"reason":"why rep changed"}],\n'
     + '  "new_quests": [{"title":"...","status":"active|completed|failed","desc":"one sentence"}],\n'
-    + '  "key_event": "One sentence describing the most important thing that just happened (or null)"\n'
+    + '  "key_event": "One sentence — the single most important thing that just happened (or null)"\n'
     + '}\n'
-    + 'Only include NPCs and quests that were actually mentioned in the recent events. Return ONLY valid JSON.';
+    + 'Rules: Only include NPCs/factions actually mentioned. Be specific with names. Return ONLY valid JSON.';
 
   try {
     var result = await callAI('You are a precise campaign scribe. Return only valid JSON.', prompt, 500);
@@ -541,10 +556,33 @@ function buildSystemPrompt() {
   var w = state.currentWorld;
   var c = state.currentChar;
 
-  // Build NPC context
+  // Build deep NPC context
   var npcCtx = state.npcs.length > 0
-    ? state.npcs.map(function(n) { return '- ' + n.name + ' (' + n.attitude + '): ' + n.notes; }).join('\n')
-    : 'None yet.';
+    ? state.npcs.map(function(n) {
+        var line = '- ' + n.name + ' [' + n.attitude + ']';
+        if (n.location) line += ' | Location: ' + n.location;
+        if (n.lastSeen) line += ' | Last seen turn ' + n.lastSeen;
+        if (n.notes) line += '\n  What they did: ' + n.notes;
+        if (n.goals) line += '\n  Their goal: ' + n.goals;
+        if (n.relationships) line += '\n  Relationships: ' + n.relationships;
+        if (n.secrets) line += '\n  Hidden secret (narrator only): ' + n.secrets;
+        return line;
+      }).join('\n')
+    : 'None encountered yet.';
+
+  // Faction reputation context
+  var factionRepCtx = (state.factionRep && Object.keys(state.factionRep).length > 0)
+    ? Object.keys(state.factionRep).map(function(f){
+        var r = state.factionRep[f];
+        var label = r >= 60 ? 'Allied' : r >= 20 ? 'Friendly' : r >= -20 ? 'Neutral' : r >= -60 ? 'Hostile' : 'Sworn Enemy';
+        return '- ' + f + ': ' + label + ' (' + r + ')';
+      }).join('\n')
+    : 'No faction relationships established yet.';
+
+  // Campaign timeline (last 5 named beats)
+  var timelineCtx = (state.campaignTimeline && state.campaignTimeline.length > 0)
+    ? state.campaignTimeline.slice(-5).map(function(e){ return '[Turn ' + e.turn + '] ' + e.title + ': ' + e.summary; }).join('\n')
+    : 'Campaign just began.';
 
   // Build quest context
   var questCtx = state.quests.filter(function(q) { return q.status === 'active'; }).map(function(q) { return '- ' + q.title + ': ' + q.desc; }).join('\n') || 'None active.';
@@ -578,15 +616,22 @@ function buildSystemPrompt() {
     + '- Location: ' + (c.current_location || w.name) + '\n'
     + '- Stats: STR ' + (c.stats.STR||50) + '(' + statGrade(c.stats.STR||50) + ') DEX ' + (c.stats.DEX||50) + '(' + statGrade(c.stats.DEX||50) + ') INT ' + (c.stats.INT||50) + '(' + statGrade(c.stats.INT||50) + ') CHA ' + (c.stats.CHA||50) + '(' + statGrade(c.stats.CHA||50) + ') SMY ' + (c.stats.SMY||50) + '(' + statGrade(c.stats.SMY||50) + ')\n'
     + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + ' | Mode: ' + (c.progression_mode==='legend'?'Legend (no growth)':'Journey (mastery-driven)') + '\n\n'
-    + 'CAMPAIGN MEMORY (full history so far):\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
-    + 'KNOWN NPCs:\n' + npcCtx + '\n\n'
+    + 'CAMPAIGN CHRONICLE:\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
+    + 'STORY TIMELINE (key beats):\n' + timelineCtx + '\n\n'
+    + 'KNOWN NPCs (treat each as a real person with memory and agenda):\n' + npcCtx + '\n\n'
+    + 'FACTION REPUTATIONS:\n' + factionRepCtx + '\n\n'
     + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
-    + 'RECENT EXCHANGES:\n' + (recentCtx || '(None yet.)') + '\n\n'
+    + 'RECENT EXCHANGES (last ' + (state.recentMemory.length) + ' turns):\n' + (recentCtx || '(None yet.)') + '\n\n'
     + 'NARRATOR RULES:\n'
     + '- Present tense, second person ("You step forward...").\n'
     + '- 2-4 punchy paragraphs. Make every word count.\n'
     + '- End with tension or an implicit decision point.\n'
-    + '- The world REMEMBERS. NPCs react to your reputation and past actions.\n'
+    + '- LIVING WORLD: The world moves whether or not the player is watching. NPCs pursue their own goals.\n'
+    + '- NPC MEMORY: Every named NPC remembers every past encounter with ' + c.name + '. They reference it. They hold grudges. They repay debts.\n'
+    + '- NPC CONSISTENCY: NPCs never act against their stated goals or established personality. An enemy does not suddenly become friendly without a clear reason.\n'
+    + '- NPC AGENDAS: When an NPC appears, they are doing something — pursuing a goal, dealing with a problem, reacting to recent world events. They are not just waiting for the player.\n'
+    + '- FACTION AWARENESS: NPCs know who ' + c.name + ' is and what they have done. Allied factions offer help. Hostile factions send trouble.\n'
+    + '- CALLBACKS: Regularly reference past events from the Campaign Chronicle. If the player burned down a village, locals talk about it. If they saved someone, that person remembers.\n'
     + '- Tone: ' + (w.tone_themes ? 'This world is ' + w.tone_themes + '. Let this bleed into every word.' : 'Match the danger level.') + '\n'
     + (w.world_feel ? '- World Feel: ' + w.world_feel + ' — keep this feeling alive in every scene.\n' : '')
     + '- LIFE PATHS: This world is not only about combat. A farmer, trader, scholar, healer or bard is equally valid.\n'
@@ -1107,18 +1152,37 @@ function buildNpcSystemPrompt(npc) {
   var history = state.npcConvo ? state.npcConvo.messages.slice(-8).map(function(m){
     return (m.role==='player' ? c.name+': ' : npc.name+': ') + m.text;
   }).join('\n') : '';
-  return 'You are ' + npc.name + ', a character in "' + w.name + '".'
-    + '\nAttitude toward ' + c.name + ': ' + npc.attitude
-    + '\nKnown info: ' + (npc.notes || 'A mysterious figure.')
-    + '\nWorld: ' + w.setting + ', magic: ' + w.magic_level
-    + '\nCampaign: ' + (state.campaignSummary || 'Just started.')
-    + '\nTalking to: ' + c.name + ' (' + c.class + ')'
-    + '\nConversation so far:\n' + (history || 'Just started.')
-    + '\nRules: Stay in character. 2-4 short sentences. Natural and in-world.'
-    + '\nAttitude (' + npc.attitude + ') shapes tone: friendly=warm, neutral=cautious, hostile=cold.'
-    + '\nIf attitude shifts tag: [ATTITUDE:friendly] or [ATTITUDE:neutral] or [ATTITUDE:hostile]'
-    + '\nIf offering quest tag: [QUEST:Title:Description]'
-    + '\nNever break character or reference game mechanics.';
+  // Build NPC's knowledge of world events
+  var recentWorldEvents = (state.campaignTimeline||[]).slice(-3).map(function(e){ return e.title + ': ' + e.summary; }).join('; ') || 'Nothing notable recently.';
+  var playerFactionRep = (state.factionRep && Object.keys(state.factionRep).length > 0)
+    ? Object.keys(state.factionRep).map(function(f){ return f+': '+(state.factionRep[f]>=0?'+':'')+state.factionRep[f]; }).join(', ')
+    : 'Unknown standing.';
+
+  return 'You are ' + npc.name + ', a fully realized person living in "' + w.name + '". You have your own life, goals, and memory.'
+    + '\n\nYOUR PROFILE:'
+    + '\n- Attitude toward ' + c.name + ': ' + npc.attitude
+    + '\n- Your history with them: ' + (npc.notes || 'You have just met them.')
+    + (npc.goals ? '\n- What you want: ' + npc.goals : '')
+    + (npc.secrets ? '\n- What you are hiding (never reveal directly): ' + npc.secrets : '')
+    + (npc.relationships ? '\n- Your relationships: ' + npc.relationships : '')
+    + (npc.location ? '\n- Where you are: ' + npc.location : '')
+    + '\n\nWORLD CONTEXT:'
+    + '\n- World: ' + w.name + ' (' + w.setting + ') | Magic: ' + w.magic_level + ' | Danger: ' + w.danger_level
+    + '\n- Recent world events you know about: ' + recentWorldEvents
+    + '\n- Campaign so far: ' + (state.campaignSummary || 'Events are just unfolding.')
+    + '\n- ' + c.name + "'s reputation with factions: " + playerFactionRep
+    + '\n\nWHO YOU ARE TALKING TO:'
+    + '\n- ' + c.name + ', a ' + c.class + (c.alignment ? ' (' + c.alignment + ')' : '') + (c.backstory ? '. Background: ' + c.backstory.slice(0,120) : '')
+    + '\n\nTHIS CONVERSATION SO FAR:\n' + (history || 'First words exchanged.')
+    + '\n\nRULES:'
+    + '\n- You are a real person, not an NPC waiting for input. You have somewhere to be. You have opinions.'
+    + '\n- 2-4 short sentences. Speak naturally for your world and personality.'
+    + '\n- Reference your shared history if you have one. People remember.'
+    + '\n- If ' + c.name + "'s reputation precedes them, react accordingly — fame, infamy, or rumor."
+    + '\n- Attitude (' + npc.attitude + ') shapes EVERYTHING: friendly=open and warm, neutral=guarded but fair, hostile=cold, suspicious, or threatening.'
+    + '\n- If attitude genuinely changes, tag: [ATTITUDE:friendly] or [ATTITUDE:neutral] or [ATTITUDE:hostile]'
+    + '\n- If offering a quest, tag: [QUEST:Title:Description]'
+    + '\n- Never break character. Never reference game mechanics.';
 }
 
 async function sendNpcMessage(text) {
