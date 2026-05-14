@@ -5,7 +5,7 @@ const PRESET_WORLDS = [
   {
     name: "Middle-earth",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A mythological ancient age of elves, dwarves, hobbits, and men. Sauron's shadow grows.",
     climate: "Temperate — rolling hills, ancient forests, volcanic wastelands near Mordor.",
     magic_level: "High",
@@ -22,7 +22,7 @@ const PRESET_WORLDS = [
   {
     name: "The Continent (Witcher)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "War-torn medieval Europe analog. Monsters are real, magic is feared, and no one is truly good.",
     climate: "Varied — temperate forests, frozen north, war-scorched plains.",
     magic_level: "High",
@@ -39,7 +39,7 @@ const PRESET_WORLDS = [
   {
     name: "Arrakis (Dune)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A barren desert planet — the only source of the Spice Melange in the known universe.",
     climate: "Extreme desert. No open water. Sandworms patrol the deep desert.",
     magic_level: "Medium",
@@ -56,7 +56,7 @@ const PRESET_WORLDS = [
   {
     name: "Shadow Slave — The Dream Realm",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "Contemporary dystopian Earth + the Dream Realm — a vast ruined magical dimension connected through Gates.",
     climate: "Forgotten Shore: desolate crimson sea, black earth, grey sky. Chained Isles: floating rock above infinite void. Godgrave: landscape of dead gods' bones.",
     magic_level: "High",
@@ -73,7 +73,7 @@ const PRESET_WORLDS = [
   {
     name: "Milky Way (Mass Effect)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A galaxy of dozens of species, ancient AI civilizations, and an extinction cycle running for millions of years.",
     climate: "Various — each planet unique. The Citadel is the political and cultural hub.",
     magic_level: "Low",
@@ -90,7 +90,7 @@ const PRESET_WORLDS = [
   {
     name: "Yharnam (Bloodborne)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A gothic Victorian city consumed by a blood plague, where night never ends and cosmic horrors bleed through reality.",
     climate: "Perpetual rainy gothic night. Fog-drenched streets and crumbling cathedrals.",
     magic_level: "Very High",
@@ -107,7 +107,7 @@ const PRESET_WORLDS = [
   {
     name: "Domains of Dread (Ravenloft)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A collection of isolated demi-planes — Domains — each ruled by a Dark Lord imprisoned by the Dark Powers.",
     climate: "Each domain has its own oppressive climate. Barovia: perpetual grey mist and autumn decay.",
     magic_level: "Very High",
@@ -124,7 +124,7 @@ const PRESET_WORLDS = [
   {
     name: "Shinobi World (Naruto)",
     world_type: "known",
-    status: "active",
+    status: "Active",
     setting: "A world of hidden ninja villages where chakra-based powers shape politics, war, and destiny.",
     climate: "Varied — Fire Country's forests, Sand's desert, Rain's perpetual storms, Snow's frozen peaks.",
     magic_level: "Very High",
@@ -219,7 +219,7 @@ export default function WorldImport() {
       setImportedWorlds(prev => new Set([...prev, preset.name]));
       flash(`✅ "${preset.name}" imported successfully!`);
       fetchWorlds();
-    } catch (e) { flash(`❌ Failed to import: ${e.message}`, true); }
+    } catch (e) { flash(`❌ ${e.message || JSON.stringify(e)}`, true); }
     setImporting(null);
   };
 
