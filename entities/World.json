@@ -8,26 +8,10 @@
       "type": "string"
     },
     "setting": {
-      "type": "string",
-      "enum": [
-        "Fantasy",
-        "Sci-Fi",
-        "Modern",
-        "Post-Apocalyptic",
-        "Ancient",
-        "Custom"
-      ]
+      "type": "string"
     },
     "climate": {
-      "type": "string",
-      "enum": [
-        "Tropical",
-        "Arctic",
-        "Desert",
-        "Temperate",
-        "Oceanic",
-        "Mixed"
-      ]
+      "type": "string"
     },
     "magic_level": {
       "type": "string",
@@ -36,16 +20,21 @@
         "Low",
         "Medium",
         "High",
+        "Very High",
         "Unlimited"
       ]
     },
     "technology_level": {
       "type": "string",
       "enum": [
+        "Stone Age",
         "Primitive",
         "Medieval",
+        "Victorian",
         "Industrial",
         "Modern",
+        "Medium",
+        "Advanced",
         "Futuristic"
       ]
     },
@@ -60,14 +49,7 @@
       ]
     },
     "population_density": {
-      "type": "string",
-      "enum": [
-        "Empty",
-        "Sparse",
-        "Moderate",
-        "Dense",
-        "Overcrowded"
-      ]
+      "type": "string"
     },
     "lore": {
       "type": "string"
@@ -82,20 +64,19 @@
       "type": "string"
     },
     "experience_mode": {
-      "type": "string",
-      "enum": [
-        "Visual",
-        "Narrative",
-        "Both"
-      ]
+      "type": "string"
     },
     "status": {
       "type": "string",
       "enum": [
         "Draft",
         "Active",
-        "Archived"
-      ]
+        "Archived",
+        "active",
+        "draft",
+        "archived"
+      ],
+      "default": "Draft"
     },
     "cover_image": {
       "type": "string"
@@ -104,20 +85,15 @@
       "type": "string",
       "enum": [
         "private",
-        "event"
+        "event",
+        "known",
+        "custom",
+        "continent"
       ],
       "default": "private"
     },
     "continent_position": {
-      "type": "string",
-      "enum": [
-        "North",
-        "South",
-        "East",
-        "West",
-        "Central",
-        "Islands"
-      ]
+      "type": "string"
     },
     "player_count": {
       "type": "number"

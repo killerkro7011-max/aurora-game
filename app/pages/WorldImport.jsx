@@ -195,7 +195,7 @@ export default function WorldImport() {
   const fetchWorlds = async () => {
     setLoading(true);
     try {
-      const data = await World.list({ limit: 200 });
+      const data = await World.list();
       setWorlds(data);
       setImportedWorlds(new Set(data.map(w => w.name)));
     } catch (e) { console.error(e); }
@@ -207,10 +207,15 @@ export default function WorldImport() {
     setTimeout(() => { setFormError(""); setSuccessMsg(""); }, 3500);
   };
 
+  const WORLD_ENTITY_KEYS = ["name","description","setting","climate","magic_level","technology_level","danger_level","population_density","lore","factions","landmarks","rules_of_nature","experience_mode","status","cover_image","world_type","continent_position","player_count","echo_narrative_story_url"];
+
   const handleImportPreset = async (preset) => {
     setImporting(preset.name);
     try {
-      await World.create({ ...preset });
+      // Strip any non-entity keys before creating
+      const clean = {};
+      WORLD_ENTITY_KEYS.forEach(k => { if (preset[k] !== undefined) clean[k] = preset[k]; });
+      await World.create(clean);
       setImportedWorlds(prev => new Set([...prev, preset.name]));
       flash(`✅ "${preset.name}" imported successfully!`);
       fetchWorlds();
