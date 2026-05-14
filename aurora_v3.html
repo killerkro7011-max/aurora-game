@@ -2668,7 +2668,7 @@ function renderKeyScreen() {
 }
 function attachKeyEvents() {
   var btn = document.getElementById('key-save'), inp = document.getElementById('key-input');
-  if (btn) btn.addEventListener('click', function() { var v=inp?inp.value.trim():''; if(v){state.apiKey=v;localStorage.setItem(KEY_STORE,v);state.screen='worlds';render();} });
+  if (btn) btn.addEventListener('click', function() { var v=inp?inp.value.trim():''; if(v){state.apiKey=v;localStorage.setItem(KEY_STORE,v);state.keyRedirectMsg=null;state.screen='worlds';render();} });
   if (inp) inp.addEventListener('keydown', function(e){if(e.key==='Enter')btn&&btn.click();});
 }
 
@@ -2713,6 +2713,7 @@ function formatImportField(val) {
 }
 
 async function importFictionalWorld(query) {
+  if (!state.apiKey) { state.screen='key'; state.keyRedirectMsg = 'Enter your OpenAI API key to import worlds.'; render(); return; }
   state.importing = true; state.importError = null; render();
 
   var sys = `You are Vesper, a lore expert and world-building engine for a god-game called Aurora. Your task is to reconstruct a fictional universe with maximum canon accuracy — as if you are the author writing a game adaptation sourcebook. Do NOT invent generic fantasy details. Use REAL names, places, events, and mechanics from the source material.
