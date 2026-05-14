@@ -67,6 +67,12 @@ let state = {
   deathDropped: [],
   deathGoldLost: 0,
   summarizing: false,
+  devMode: false,          // Ctrl+Shift+D to toggle
+  devPanel: 'world',       // 'world' | 'npcs' | 'stats' | 'inspect'
+  devInjectEvent: '',
+  devForceLoot: '',
+  devTimeSkip: 1,
+  devGodMode: false,
   npcConvo: null,
   shopItems: [],
   shopLoading: false,
@@ -96,6 +102,26 @@ let state = {
   cobuildDraft: {},      // world fields being assembled during chat
   cobuildDone: false,    // true when world is fully built and ready to review
 };
+
+function devTesterWorld() {
+  return {
+    name: 'Dev Tester World — Crucible',
+    description: 'A brutally hostile testing ground where every system is stressed to its limit. Factions hate you, danger lurks everywhere, and nothing is free.',
+    setting: 'Dark Fantasy', climate: 'Harsh & Unforgiving', magic_level: 'High', technology_level: 'Medieval',
+    danger_level: 'Extreme', population_density: 'Sparse', experience_mode: 'Narrative',
+    lore: 'The Crucible was born from a failed god-experiment — a world stitched together from the worst scraps of other realities. It has no mercy and no memory of better days.',
+    factions: 'The Iron Court (hostile rulers), The Ashbound (hostile zealots), The Forgotten (neutral survivors)',
+    landmarks: 'The Scar (massive crater where the sky cracked), The Ossuary (city of bones), The Last Hearth (only warm inn, barely neutral)',
+    rules_of_nature: 'Magic is wild and unpredictable — it works, but often with a cost. Death is permanent unless a rare ritual is performed.',
+    gods_religion: 'The Broken God — worshipped by the desperate, believed to be imprisoned beneath the Scar.',
+    tone_themes: 'bleak, dangerous, morally grey, every win feels earned',
+    economy_resources: 'Barter economy. Gold is mistrusted. Food and medicine are currency.',
+    secrets_mysteries: 'The world is actually a simulation built by an ancient civilization. Some NPCs are glitching — they know things they should not.',
+    languages_cultures: 'Three dialects. Survivors use gesture-codes to communicate without being heard by the Iron Court patrols.',
+    world_feel: 'Tense, gritty, and alive with hidden danger. Every shadow hides something.',
+    world_type: 'original'
+  };
+}
 
 function freshWorld() {
   return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative',
@@ -1833,6 +1859,260 @@ function attachCobuildEvents() {
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
 }
 
+
+// ---- DEV MODE PANEL ----
+function renderDevPanel() {
+  if (!state.devMode || state.screen !== 'play') return '';
+  var tabs = ['world','npcs','stats','inspect'];
+  var tabLabels = {'world':'🌍 World','npcs':'🧑 NPCs','stats':'📊 Stats','inspect':'🔬 Inspect'};
+  var tabHtml = tabs.map(function(t){
+    return '<button data-dev-tab="'+t+'" style="font-size:0.7rem;padding:4px 10px;border:none;border-radius:6px;cursor:pointer;background:'+(state.devPanel===t?'#9333ea':'rgba(255,255,255,0.08)')+';color:white">'+tabLabels[t]+'</button>';
+  }).join('');
+
+  var body = '';
+
+  if (state.devPanel === 'world') {
+    body += '<div style="margin-bottom:10px">'
+      + '<div style="font-size:0.7rem;color:#a78bfa;margin-bottom:4px">⚡ Inject World Event</div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<input id="dev-inject-input" placeholder="e.g. A fire breaks out nearby..." value="'+esc(state.devInjectEvent||'')+'" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 8px;color:white;font-size:0.7rem;outline:none"/>'
+      + '<button id="dev-inject-btn" style="background:#7c3aed;border:none;color:white;padding:5px 10px;border-radius:6px;font-size:0.7rem;cursor:pointer">Inject</button>'
+      + '</div></div>'
+      + '<div style="margin-bottom:10px">'
+      + '<div style="font-size:0.7rem;color:#a78bfa;margin-bottom:4px">⏩ Time Skip (turns)</div>'
+      + '<div style="display:flex;gap:6px;align-items:center">'
+      + '<input id="dev-timeskip-input" type="number" min="1" max="50" value="'+(state.devTimeSkip||5)+'" style="width:60px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 8px;color:white;font-size:0.7rem;outline:none"/>'
+      + '<button id="dev-timeskip-btn" style="background:#0891b2;border:none;color:white;padding:5px 10px;border-radius:6px;font-size:0.7rem;cursor:pointer">Skip Time</button>'
+      + '</div></div>'
+      + '<div style="margin-bottom:10px">'
+      + '<div style="font-size:0.7rem;color:#a78bfa;margin-bottom:4px">🎁 Force Item Drop</div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<input id="dev-loot-input" placeholder="e.g. legendary sword" value="'+esc(state.devForceLoot||'')+'" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 8px;color:white;font-size:0.7rem;outline:none"/>'
+      + '<button id="dev-loot-btn" style="background:#059669;border:none;color:white;padding:5px 10px;border-radius:6px;font-size:0.7rem;cursor:pointer">Drop</button>'
+      + '</div></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+      + '<button id="dev-force-summary" style="font-size:0.7rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;padding:5px 10px;border-radius:6px;cursor:pointer">🧠 Force Memory Compress</button>'
+      + '<button id="dev-godmode" style="font-size:0.7rem;background:'+(state.devGodMode?'rgba(250,204,21,0.3)':'rgba(255,255,255,0.08)')+';border:1px solid rgba(255,255,255,0.15);color:#facc15;padding:5px 10px;border-radius:6px;cursor:pointer">'+(state.devGodMode?'⭐ God Mode ON':'☆ God Mode OFF')+'</button>'
+      + '<button id="dev-add-gold" style="font-size:0.7rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#fbbf24;padding:5px 10px;border-radius:6px;cursor:pointer">💰 +100g</button>'
+      + '</div>';
+  }
+
+  if (state.devPanel === 'npcs') {
+    if (state.npcs.length === 0) {
+      body += '<div style="color:#6b7280;font-size:0.75rem;text-align:center;padding:20px">No NPCs encountered yet.</div>';
+    } else {
+      body += state.npcs.map(function(npc, idx) {
+        var aClr = {friendly:'#4ade80',neutral:'#facc15',hostile:'#f87171'}[npc.attitude]||'#facc15';
+        return '<div style="margin-bottom:10px;padding:8px;background:rgba(255,255,255,0.04);border-radius:8px;border:1px solid rgba(255,255,255,0.08)">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+          + '<div style="font-size:0.75rem;font-weight:700;color:white">'+esc(npc.name)+'</div>'
+          + '<div style="display:flex;gap:4px">'
+          + ['friendly','neutral','hostile'].map(function(a){
+              return '<button data-dev-npc-att="'+idx+'" data-att="'+a+'" style="font-size:0.6rem;padding:2px 6px;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;background:'+(npc.attitude===a?aClr+'33':'transparent')+';color:'+(npc.attitude===a?aClr:'#9ca3af')+'">'+a+'</button>';
+            }).join('')
+          + '</div></div>'
+          + (npc.goals ? '<div style="font-size:0.65rem;color:#a78bfa;margin-bottom:2px">🎯 '+esc(npc.goals)+'</div>' : '')
+          + (npc.location ? '<div style="font-size:0.65rem;color:#6b7280">📍 '+esc(npc.location)+'</div>' : '')
+          + (npc.notes ? '<div style="font-size:0.65rem;color:#9ca3af;margin-top:4px">'+esc(npc.notes.slice(0,100))+'</div>' : '')
+          + '</div>';
+      }).join('');
+    }
+    // Faction rep
+    if (state.factionRep && Object.keys(state.factionRep).length > 0) {
+      body += '<div style="font-size:0.7rem;color:#a78bfa;margin-top:10px;margin-bottom:4px">⚔️ Faction Reputations</div>';
+      body += Object.keys(state.factionRep).map(function(f){
+        var r = state.factionRep[f];
+        var barColor = r >= 0 ? '#4ade80' : '#f87171';
+        var pct = Math.abs(r);
+        return '<div style="margin-bottom:6px">'
+          + '<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#e2e8f0;margin-bottom:2px"><span>'+esc(f)+'</span><span style="color:'+barColor+'">'+(r>=0?'+':'')+r+'</span></div>'
+          + '<div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px"><div style="height:4px;width:'+pct+'%;background:'+barColor+';border-radius:2px;transition:width 0.3s"></div></div>'
+          + '</div>';
+      }).join('');
+    }
+  }
+
+  if (state.devPanel === 'stats') {
+    var c = state.currentChar;
+    if (!c) { body += '<div style="color:#6b7280;font-size:0.75rem">No character loaded.</div>'; }
+    else {
+      var statKeys = ['STR','DEX','CON','INT','WIS','CHA','SMY'];
+      body += '<div style="margin-bottom:8px;display:flex;gap:6px;align-items:center">'
+        + '<span style="font-size:0.7rem;color:#a78bfa">❤️ HP:</span>'
+        + '<input id="dev-hp-val" type="number" min="1" max="999" value="'+state.charHP+'" style="width:60px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 6px;color:white;font-size:0.7rem;outline:none"/>'
+        + '<button id="dev-set-hp" style="font-size:0.7rem;background:#7c3aed;border:none;color:white;padding:4px 8px;border-radius:6px;cursor:pointer">Set</button>'
+        + '</div>'
+        + '<div style="margin-bottom:8px;display:flex;gap:6px;align-items:center">'
+        + '<span style="font-size:0.7rem;color:#a78bfa">✨ XP:</span>'
+        + '<input id="dev-xp-val" type="number" min="0" value="'+c.experience+'" style="width:70px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 6px;color:white;font-size:0.7rem;outline:none"/>'
+        + '<button id="dev-set-xp" style="font-size:0.7rem;background:#7c3aed;border:none;color:white;padding:4px 8px;border-radius:6px;cursor:pointer">Set</button>'
+        + '</div>';
+      body += statKeys.map(function(s){
+        return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">'
+          + '<span style="font-size:0.65rem;color:#a78bfa;width:28px">'+s+'</span>'
+          + '<input data-dev-stat="'+s+'" type="range" min="10" max="200" value="'+(c.stats[s]||50)+'" style="flex:1;accent-color:#9333ea"/>'
+          + '<span id="dev-stat-val-'+s+'" style="font-size:0.65rem;color:white;width:28px;text-align:right">'+(c.stats[s]||50)+'</span>'
+          + '</div>';
+      }).join('');
+      body += '<button id="dev-apply-stats" style="margin-top:8px;font-size:0.7rem;background:#9333ea;border:none;color:white;padding:6px 14px;border-radius:6px;cursor:pointer;width:100%">Apply Stats</button>';
+    }
+  }
+
+  if (state.devPanel === 'inspect') {
+    var c2 = state.currentChar, w2 = state.currentWorld;
+    var tl = (state.campaignTimeline||[]).slice(-8).reverse();
+    body += '<div style="font-size:0.65rem;color:#a78bfa;margin-bottom:4px">📜 Story Timeline</div>';
+    body += (tl.length ? tl.map(function(e){ return '<div style="margin-bottom:3px;font-size:0.65rem;color:#e2e8f0"><span style="color:#6b7280">[T'+e.turn+']</span> <strong>'+esc(e.title)+'</strong> — '+esc(e.summary)+'</div>'; }).join('') : '<div style="color:#4b5563;font-size:0.65rem">No events yet.</div>');
+    body += '<div style="font-size:0.65rem;color:#a78bfa;margin-top:10px;margin-bottom:4px">🧠 Campaign Memory</div>';
+    body += '<div style="font-size:0.65rem;color:#9ca3af;background:rgba(0,0,0,0.3);padding:6px;border-radius:6px;max-height:80px;overflow-y:auto">'+(state.campaignSummary||'(none yet)')+'</div>';
+    body += '<div style="font-size:0.65rem;color:#a78bfa;margin-top:10px;margin-bottom:4px">🔢 Raw State</div>';
+    var rawSnap = {
+      turn: state.turnCount, hp: state.charHP, gold: state.gold,
+      inCombat: state.inCombat, enemy: state.enemy ? state.enemy.name : null,
+      npcs: state.npcs.length, quests: state.quests.length, 
+      recentMemory: state.recentMemory.length, godMode: state.devGodMode
+    };
+    body += '<pre style="font-size:0.6rem;color:#6ee7b7;background:rgba(0,0,0,0.4);padding:6px;border-radius:6px;overflow-x:auto;white-space:pre-wrap">'+JSON.stringify(rawSnap,null,2)+'</pre>';
+  }
+
+  return '<div id="dev-panel" style="position:fixed;bottom:80px;right:16px;width:300px;max-height:70vh;overflow-y:auto;background:rgba(10,10,20,0.97);border:1px solid rgba(147,51,234,0.5);border-radius:12px;z-index:500;box-shadow:0 8px 32px rgba(0,0,0,0.8);display:flex;flex-direction:column">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">'
+    + '<div style="font-size:0.75rem;font-weight:700;color:#c084fc">🛠️ DEV MODE</div>'
+    + '<button id="dev-close" style="background:none;border:none;color:#6b7280;font-size:0.8rem;cursor:pointer">✕</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05);flex-shrink:0;flex-wrap:wrap">'+tabHtml+'</div>'
+    + '<div style="padding:12px;overflow-y:auto">'+body+'</div>'
+    + '</div>';
+}
+
+// Dev mode keyboard shortcut + dev tester world
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+    e.preventDefault();
+    state.devMode = !state.devMode;
+    render();
+  }
+});
+
+function attachDevPanelEvents() {
+  var closeBtn = document.getElementById('dev-close');
+  if (closeBtn) closeBtn.addEventListener('click', function(){ state.devMode = false; render(); });
+
+  // Tab switching
+  document.querySelectorAll('[data-dev-tab]').forEach(function(btn){
+    btn.addEventListener('click', function(){ state.devPanel = btn.dataset.devTab; render(); });
+  });
+
+  // World tab
+  var injectBtn = document.getElementById('dev-inject-btn');
+  var injectInp = document.getElementById('dev-inject-input');
+  if (injectBtn && injectInp) {
+    injectBtn.addEventListener('click', function(){
+      var ev = injectInp.value.trim();
+      if (!ev) return;
+      state.devInjectEvent = '';
+      // Inject as a system message into the next prompt context
+      state.recentMemory.push({ role: 'narrator', text: '[WORLD EVENT]: ' + ev });
+      state.messages.push({ role: 'system', text: '⚡ Event injected: ' + ev, id: Date.now() });
+      sendMessage('Describe what just happened as a result of: ' + ev);
+      render();
+    });
+  }
+
+  var timeskipBtn = document.getElementById('dev-timeskip-btn');
+  var timeskipInp = document.getElementById('dev-timeskip-input');
+  if (timeskipBtn && timeskipInp) {
+    timeskipBtn.addEventListener('click', function(){
+      var n = parseInt(timeskipInp.value) || 5;
+      state.turnCount += n;
+      state.messages.push({ role: 'system', text: '⏩ Time skipped +' + n + ' turns (now turn ' + state.turnCount + ')', id: Date.now() });
+      // Force summary if enough memory
+      if (state.recentMemory.length >= 5) runRollingSummary();
+      sendMessage('Describe what changed in the world during the past ' + n + ' turns while I rested.');
+      render();
+    });
+  }
+
+  var lootBtn = document.getElementById('dev-loot-btn');
+  var lootInp = document.getElementById('dev-loot-input');
+  if (lootBtn && lootInp) {
+    lootBtn.addEventListener('click', async function(){
+      var desc = lootInp.value.trim();
+      if (!desc) return;
+      lootBtn.disabled = true; lootBtn.textContent = '...';
+      try {
+        var result = await callAI(
+          'You generate RPG loot items as JSON. Return ONLY valid JSON, no markdown.',
+          'Generate a single RPG item matching this description: "' + desc + '" for a ' + (state.currentChar?state.currentChar.class:'adventurer') + ' in a ' + (state.currentWorld?state.currentWorld.setting:'fantasy') + ' world.\n'
+          + 'Return: {"name":"...","type":"weapon|armor|consumable|tool|material|misc","rarity":"common|uncommon|rare|epic|legendary","description":"...","value":N,"effect":"..."}',
+          150
+        );
+        var cleaned = result.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+        var item = JSON.parse(cleaned);
+        item.id = Date.now(); item.qty = 1; item.equipped = false;
+        if (!state.currentChar.inventoryItems) state.currentChar.inventoryItems = [];
+        state.currentChar.inventoryItems.push(item);
+        state.lootToast = { items: [item], gold: 0 };
+        setTimeout(function(){ state.lootToast = null; render(); }, 3500);
+      } catch(e) {
+        console.error('Dev loot error:', e);
+      }
+      lootBtn.disabled = false; lootBtn.textContent = 'Drop';
+      render();
+    });
+  }
+
+  var summaryBtn = document.getElementById('dev-force-summary');
+  if (summaryBtn) summaryBtn.addEventListener('click', function(){
+    if (state.recentMemory.length === 0) {
+      state.messages.push({ role:'system', text:'No recent memory to compress.', id:Date.now() }); render(); return;
+    }
+    runRollingSummary().then(function(){ render(); });
+  });
+
+  var godBtn = document.getElementById('dev-godmode');
+  if (godBtn) godBtn.addEventListener('click', function(){ state.devGodMode = !state.devGodMode; render(); });
+
+  var goldBtn = document.getElementById('dev-add-gold');
+  if (goldBtn) goldBtn.addEventListener('click', function(){ state.gold += 100; state.messages.push({role:'system',text:'💰 +100g added (Dev)',id:Date.now()}); render(); });
+
+  // NPC attitude overrides
+  document.querySelectorAll('[data-dev-npc-att]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var idx = parseInt(btn.dataset.devNpcAtt);
+      var att = btn.dataset.att;
+      if (state.npcs[idx]) { state.npcs[idx].attitude = att; render(); }
+    });
+  });
+
+  // Stats tab
+  document.querySelectorAll('[data-dev-stat]').forEach(function(inp){
+    inp.addEventListener('input', function(){
+      var valEl = document.getElementById('dev-stat-val-'+inp.dataset.devStat);
+      if (valEl) valEl.textContent = inp.value;
+    });
+  });
+  var applyStats = document.getElementById('dev-apply-stats');
+  if (applyStats) applyStats.addEventListener('click', function(){
+    document.querySelectorAll('[data-dev-stat]').forEach(function(inp){
+      if (state.currentChar && state.currentChar.stats) state.currentChar.stats[inp.dataset.devStat] = parseInt(inp.value);
+    });
+    state.messages.push({role:'system',text:'📊 Stats updated via Dev Mode',id:Date.now()}); render();
+  });
+
+  var setHpBtn = document.getElementById('dev-set-hp');
+  if (setHpBtn) setHpBtn.addEventListener('click', function(){
+    var v = parseInt(document.getElementById('dev-hp-val').value);
+    if (!isNaN(v)) { state.charHP = v; render(); }
+  });
+
+  var setXpBtn = document.getElementById('dev-set-xp');
+  if (setXpBtn) setXpBtn.addEventListener('click', function(){
+    var v = parseInt(document.getElementById('dev-xp-val').value);
+    if (!isNaN(v) && state.currentChar) { state.currentChar.experience = v; render(); }
+  });
+}
+
 function render() {
   var root = document.getElementById('root');
   if (!root) return;
@@ -2227,6 +2507,7 @@ function renderWorlds() {
     +'<div><h1 style="font-size:1.5rem;font-weight:700">🌌 Aurora Worlds</h1><p style="color:#9ca3af;font-size:0.875rem">Your realms & the shared universe.</p></div>'
     +'<div style="display:flex;gap:10px">'
     +'<button id="btn-cobuild" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(236,72,153,0.2));border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:8px 14px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.85rem"><span>✦</span>Build With Vesper</button>'
+    +'<button id="btn-dev-world" style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;padding:8px 14px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.75rem">🛠️ Dev World</button>'
     +'<button id="btn-new-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.85rem">+ New World</button>'
     +'<button id="btn-home" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:12px;cursor:pointer;font-size:0.85rem">← Home</button>'
     +'</div>'
@@ -2257,6 +2538,15 @@ function attachWorldsEvents() {
   function goCreate(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();}
   if(n) n.addEventListener('click',goCreate);
   if(f) f.addEventListener('click',goCreate);
+  var bDevWorld = document.getElementById('btn-dev-world');
+  if(bDevWorld) bDevWorld.addEventListener('click', function(){
+    state.draftWorld = devTesterWorld();
+    state.worldStep = 0;
+    state.screen = 'createWorld';
+    // Skip straight to review by going to final step
+    state.worldStep = 7; // jump to end
+    render();
+  });
   var bCobuild = document.getElementById('btn-cobuild');
   var bCobuildFirst = document.getElementById('btn-cobuild-first');
   function goCobuild(){ state.draftWorld=freshWorld(); cobuildStart(); }
@@ -2705,7 +2995,7 @@ function renderPlay() {
 
   var mainStyle=(state.showJournal?'margin-right:320px;':'')+(state.showInventory&&!state.showJournal?'margin-right:320px;':state.showInventory&&state.showShop?'margin-right:640px;':state.showInventory?'margin-right:320px;':'');
 
-  return (state.deathScreen ? renderDeathScreen() : '')
+  return (state.devMode ? renderDevPanel() : '') + (state.deathScreen ? renderDeathScreen() : '')
     + renderLootToast()
     + (state.npcConvo ? renderNpcConvoModal() : '') + toast
     +(state.showInventory ? renderInventoryPanel() : '')
@@ -2813,6 +3103,8 @@ function attachPlayEvents() {
   if(npcInp) npcInp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendNpcMessage(npcInp.value);npcInp.value='';}});
   document.querySelectorAll('.npc-quick-btn').forEach(function(b){b.addEventListener('click',function(){sendNpcMessage(b.dataset.q);});});
   scrollToBottom();
+  // Dev panel
+  if (state.devMode) attachDevPanelEvents();
 }
 
 // ---- Boot ----
