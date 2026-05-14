@@ -193,13 +193,11 @@ export default function WorldImport() {
   useEffect(() => { fetchWorlds(); }, []);
 
   const fetchWorlds = async () => {
-    setLoading(true);
     try {
       const data = await World.list();
       setWorlds(data);
       setImportedWorlds(new Set(data.map(w => w.name)));
     } catch (e) { console.error(e); }
-    setLoading(false);
   };
 
   const flash = (msg, isError = false) => {
@@ -211,15 +209,21 @@ export default function WorldImport() {
 
   const handleImportPreset = async (preset) => {
     setImporting(preset.name);
+    setFormError("");
+    setSuccessMsg("");
     try {
-      // Strip any non-entity keys before creating
       const clean = {};
       WORLD_ENTITY_KEYS.forEach(k => { if (preset[k] !== undefined) clean[k] = preset[k]; });
-      await World.create(clean);
+      console.log("Importing world:", clean);
+      const result = await World.create(clean);
+      console.log("Import result:", result);
       setImportedWorlds(prev => new Set([...prev, preset.name]));
-      flash(`✅ "${preset.name}" imported successfully!`);
+      setSuccessMsg(`✅ "${preset.name}" imported successfully!`);
       fetchWorlds();
-    } catch (e) { flash(`❌ ${e.message || JSON.stringify(e)}`, true); }
+    } catch (e) {
+      console.error("Import error:", e);
+      setFormError(`❌ ${e.message || e.error || JSON.stringify(e)}`);
+    }
     setImporting(null);
   };
 
@@ -316,7 +320,7 @@ export default function WorldImport() {
                     </span>
                   </div>
                   <button onClick={() => handleImportPreset(preset)}
-                    disabled={isImported || isImporting}
+                    disabled={isImported || !!importing}
                     className={`w-full py-2 rounded-lg text-sm font-semibold transition ${isImported ? "bg-gray-700/50 text-gray-500 cursor-not-allowed" : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white"}`}>
                     {isImporting ? "Importing..." : isImported ? "✓ Imported" : "Import World"}
                   </button>
