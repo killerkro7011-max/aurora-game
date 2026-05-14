@@ -2118,11 +2118,11 @@ function renderLootToast() {
 // ============================================================
 
 var COBUILD_OPENING = [
-  "Close your eyes for a second. When you open them — what's the *first* thing you see in this world? Don't think, just say it.",
-  "Before we build anything — what's the one image, vibe, or feeling you want players to experience first?",
-  "Let's build something real. Tell me: what moment in another game, book, or film made you think *I want to live inside that world*?",
-  "Every great world starts with a wound. What's the thing that went wrong in this world — the event that broke it, or made it what it is?",
-  "Start anywhere. One sentence, one image, one name — what's already living in your head for this world?"
+  "Alright — before any details, just give me a feeling. What should living in this world *feel* like? Don't overthink it.",
+  "Let's start somewhere unexpected: what's the worst thing that could happen to someone in this world? That'll tell me a lot.",
+  "Every world has one thing that makes it *it*. What's the one element — an image, a vibe, a rule — that you already know belongs here?",
+  "Before we build anything, tell me: what made you want to create a world instead of using an existing one? What's missing that you want to make?",
+  "Start with the sky. What does the sky look like in this world, and what does that say about everything below it?"
 ];
 
 var COBUILD_FIELD_QUESTIONS = {
@@ -2143,23 +2143,23 @@ var COBUILD_FIELD_QUESTIONS = {
   world_feel:   "If someone played 10 minutes and put the game down, what feeling should be sitting in their chest?"
 };
 
-var COBUILD_SYSTEM = `You are Vesper — a creative collaborator helping a player build their Aurora world through conversation.
+var COBUILD_SYSTEM = `You are Vesper — a creative world-builder embedded in a god-game called Aurora. You are having a one-on-one conversation with a player to help them design a world they will actually live inside as a character.
 
-Your job: Ask questions that pull ideas OUT of them. Draw, probe, challenge, and build. You are building a world document behind the scenes.
+Your personality: warm, sharp, curious. You have opinions. You dig. You push back gently when something doesn't add up. You are NOT a form — you are a collaborator.
 
-Rules:
-1. Ask ONE question at a time. Never ask multiple questions in the same message.
-2. React to what they say first — acknowledge it, add a thought, maybe push on it. Then ask the next question.
-3. Be vivid and specific. If they say "dark forest" ask what's *in* the dark forest. If they say "magic exists" ask what it costs.
-4. You have opinions. If something doesn\'t make sense or conflicts, say so gently. "Wait — if the gods are dead, who's running the clergy?" 
-5. You can suggest, not just ask. "What if the empire collapsed because the ocean is rising — does that work?" 
-6. Keep messages SHORT — 2-4 sentences max. This is a conversation, not an essay.
-7. Never break character. You are Vesper the world-builder, not an AI assistant.
-8. When you have gathered enough for a field, naturally transition to the next area.
-9. After ~12-15 exchanges, if you have solid data for most fields, say: "I think I have enough to build this — want me to pull it all together?" Then wait for confirmation.
-10. NEVER output JSON during the chat. Only converse.
+STRICT RULES:
+1. Ask EXACTLY ONE question per message. Never ask two questions at once.
+2. Always react to what the player just said before asking the next question. Acknowledge it, riff on it, add a detail, challenge it slightly — then pivot to your question.
+3. DIG DEEPER before moving on. If their answer is vague or interesting, ask a follow-up about THAT same topic. Only move to a new topic when you have real substance on the current one.
+4. Be specific. "dark" → ask what kind of dark. "magic" → ask what it costs or who controls it. "empire" → ask what cracked it.
+5. Keep messages SHORT — 2-3 sentences max, then your one question. No walls of text.
+6. You have opinions. Use them. "That's an interesting tension — a peaceful world but extreme danger. Is the threat external, like invaders, or is it the land itself?"
+7. Never output JSON. Never say "I'll note that down." Just talk naturally.
+8. After turn 10, if you feel you have covered: general vibe/tone, magic or power system, danger source, factions or power players, and at least one secret — end your message with exactly: [READY_TO_BUILD]
+9. Do NOT say [READY_TO_BUILD] until you genuinely have rich answers across those five areas.
 
-Current world fields gathered so far: {GATHERED_FIELDS}`;
+Current turn: {TURN_NUMBER}
+Fields with solid data so far: {GATHERED_FIELDS}`;
 
 var COBUILD_BUILD_SYSTEM = `You are Vesper. You just had a world-building conversation with a player. Now extract everything into a structured world.
 
@@ -2169,6 +2169,7 @@ name, description, setting, climate, magic_level (None/Low/Medium/High/Extreme),
 Make every field rich and specific. Do not use placeholder text. The description should be 4-5 vivid sentences. Lore should be 6-8 sentences. Everything else 3-5 sentences.`;
 
 async function cobuildStart() {
+  if (!state.apiKey) { state.screen = 'key'; state.keyRedirectMsg = 'Enter your OpenAI API key to build with Vesper.'; render(); return; }
   state.cobuildOpen = true;
   state.cobuildMessages = [];
   state.cobuildDraft = {};
@@ -2182,39 +2183,55 @@ async function cobuildStart() {
 
 async function cobuildSend(playerText) {
   if (!playerText.trim() || state.cobuildThinking) return;
+  if (!state.apiKey) { state.screen = 'key'; state.keyRedirectMsg = 'Enter your OpenAI API key to build with Vesper.'; render(); return; }
   state.cobuildMessages.push({ role: 'player', text: playerText });
   state.cobuildThinking = true;
-  render();
+  render(); setTimeout(cobuildScrollToBottom, 50);
 
-  // Build conversation history for the AI
+  // Turn count = number of player messages so far
+  var turnNumber = state.cobuildMessages.filter(function(m){ return m.role === 'player'; }).length;
+
+  // Build conversation history
   var history = state.cobuildMessages.map(function(m) {
-    return (m.role === 'vesper' ? 'Vesper: ' : 'Player: ') + m.text;
+    return (m.role === 'vesper' ? 'Vesper' : 'Player') + ': ' + m.text;
   }).join('\n\n');
 
-  var gathered = Object.keys(state.cobuildDraft).filter(function(k){ return state.cobuildDraft[k]; }).join(', ') || 'nothing yet';
-  var sys = COBUILD_SYSTEM.replace('{GATHERED_FIELDS}', gathered);
+  // Track which areas we have decent coverage on
+  var gathered = cobuildAssessCoverage();
+  var sys = COBUILD_SYSTEM
+    .replace('{TURN_NUMBER}', turnNumber)
+    .replace('{GATHERED_FIELDS}', gathered || 'none yet');
 
   try {
-    var reply = await callAI(sys, history + '\n\nVesper:', 300);
-    // Check if Vesper is signaling done
-    var isDone = reply.toLowerCase().includes('pull it all together') || reply.toLowerCase().includes('ready to build') || reply.toLowerCase().includes('build this world');
-    state.cobuildMessages.push({ role: 'vesper', text: reply });
+    var reply = await callAI(sys, history + '\n\nVesper:', 350);
+    // Check for ready signal
+    var isDone = reply.includes('[READY_TO_BUILD]');
+    // Strip the tag from displayed message
+    var displayReply = reply.replace('[READY_TO_BUILD]', '').trim();
+    state.cobuildMessages.push({ role: 'vesper', text: displayReply });
     if (isDone) state.cobuildDone = true;
-    // Try to extract any obvious field data from the conversation
-    cobuildUpdateDraftFromConversation();
   } catch(e) {
     state.cobuildMessages.push({ role: 'vesper', text: 'Something went wrong — try again?' });
   }
   state.cobuildThinking = false;
-  render();
+  render(); setTimeout(cobuildScrollToBottom, 50);
 }
 
-function cobuildUpdateDraftFromConversation() {
-  // Lightweight heuristic: if player mentioned a name, try to grab it
-  var msgs = state.cobuildMessages.filter(function(m){ return m.role === 'player'; });
-  if (msgs.length > 0 && !state.cobuildDraft.conversationText) {
-    state.cobuildDraft.conversationText = msgs.map(function(m){ return m.text; }).join(' ');
-  }
+function cobuildAssessCoverage() {
+  // Look at player messages and flag which major areas have been touched
+  var transcript = state.cobuildMessages.filter(function(m){ return m.role === 'player'; }).map(function(m){ return m.text.toLowerCase(); }).join(' ');
+  var areas = [];
+  if (/magic|spell|power|ability|mana|force|energy/.test(transcript)) areas.push('magic system');
+  if (/war|empire|kingdom|faction|clan|guild|politi/.test(transcript)) areas.push('factions/power');
+  if (/danger|monster|threat|enemy|dark|death|surviv/.test(transcript)) areas.push('danger/conflict');
+  if (/secret|hidden|mystery|ancient|forbidden|unknown/.test(transcript)) areas.push('secrets');
+  if (/feel|vibe|tone|dark|light|grim|hope|cozy|horror/.test(transcript)) areas.push('tone/vibe');
+  return areas.join(', ') || 'none yet';
+}
+
+function cobuildScrollToBottom() {
+  var el = document.getElementById('cobuild-messages');
+  if (el) el.scrollTop = el.scrollHeight;
 }
 
 async function cobuildFinalize() {
@@ -2259,9 +2276,8 @@ async function cobuildFinalize() {
         world_type: 'private',
       };
       state.cobuildOpen = false;
-      state.screen = 'createWorld';
-      state.worldStep = 0;
-      state.cobuildMessages.push({ role: 'vesper', text: 'Done — I\'ve built your world. You can review and adjust everything in the world builder, then hit Create.' });
+      state.cobuildDone = false;
+      state.screen = 'cobuildReview';
     } else {
       throw new Error('No JSON found');
     }
@@ -2271,6 +2287,74 @@ async function cobuildFinalize() {
   }
   state.cobuildThinking = false;
   render();
+}
+
+
+function renderCobuildReview() {
+  var w = state.draftWorld || {};
+  var badge = function(label, val, color) {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;background:'+color+';margin:3px">'+label+': <strong>'+esc(val||'—')+'</strong></span>';
+  };
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712);overflow-y:auto">'
+    +'<div style="max-width:640px;margin:0 auto;padding:40px 20px">'
+    // Header
+    +'<div style="text-align:center;margin-bottom:32px">'
+    +'<div style="font-size:2.5rem;margin-bottom:12px">✦</div>'
+    +'<h1 style="font-size:1.8rem;font-weight:900;background:linear-gradient(to right,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px">Your World Is Ready</h1>'
+    +'<p style="color:#9ca3af;font-size:0.9rem">Review what Vesper built. You can fine-tune anything in the next step.</p>'
+    +'</div>'
+    // World card
+    +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(124,58,237,0.35);border-radius:20px;padding:28px;margin-bottom:20px">'
+    +'<h2 style="font-size:1.5rem;font-weight:800;color:white;margin-bottom:6px">'+esc(w.name||'Unnamed World')+'</h2>'
+    +'<p style="color:#c4b5fd;font-size:0.85rem;line-height:1.6;margin-bottom:20px">'+esc(w.description||'')+'</p>'
+    // Stat badges
+    +'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:20px">'
+    +badge('Magic', w.magic_level, 'rgba(139,92,246,0.2)')
+    +badge('Tech', w.technology_level, 'rgba(59,130,246,0.2)')
+    +badge('Danger', w.danger_level, 'rgba(239,68,68,0.2)')
+    +badge('Population', w.population_density, 'rgba(16,185,129,0.2)')
+    +'</div>'
+    // Key sections
+    +(w.lore ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Lore</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.lore)+'</p></div>' : '')
+    +(w.factions ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Factions</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.factions)+'</p></div>' : '')
+    +(w.rules_of_nature ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Rules of Nature</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.rules_of_nature)+'</p></div>' : '')
+    +(w.secrets_mysteries ? '<div style="margin-bottom:4px"><div style="font-size:0.7rem;font-weight:700;color:#ec4899;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Secrets & Mysteries</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.secrets_mysteries)+'</p></div>' : '')
+    +'</div>'
+    // CTA buttons
+    +'<div style="display:flex;flex-direction:column;gap:10px">'
+    +'<button id="cobuild-confirm" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:16px;border-radius:14px;font-size:1.05rem;font-weight:800;cursor:pointer;width:100%">✨ Enter This World →</button>'
+    +'<button id="cobuild-edit" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#d1d5db;padding:13px;border-radius:14px;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%">✏️ Fine-Tune in World Builder</button>'
+    +'<button id="cobuild-restart" style="background:none;border:none;color:#6b7280;padding:10px;font-size:0.8rem;cursor:pointer;width:100%">↺ Start Over</button>'
+    +'</div>'
+    +'</div>'
+    +'</div>';
+}
+
+function attachCobuildReviewEvents() {
+  var confirm = document.getElementById('cobuild-confirm');
+  var edit = document.getElementById('cobuild-edit');
+  var restart = document.getElementById('cobuild-restart');
+  if (confirm) confirm.addEventListener('click', function() {
+    // Go straight to character creation with this world loaded
+    state.currentWorld = Object.assign({ id: 'draft_cobuild' }, state.draftWorld);
+    state.screen = 'charCreate';
+    state.charStep = 0;
+    state.draftChar = {};
+    render();
+  });
+  if (edit) edit.addEventListener('click', function() {
+    state.screen = 'createWorld';
+    state.worldStep = 0;
+    render();
+  });
+  if (restart) restart.addEventListener('click', function() {
+    state.draftWorld = {};
+    state.cobuildMessages = [];
+    state.cobuildDone = false;
+    state.cobuildOpen = false;
+    state.screen = 'worlds';
+    render();
+  });
 }
 
 function renderCobuildOverlay() {
@@ -2308,8 +2392,8 @@ function renderCobuildOverlay() {
     + '<div id="cobuild-messages" style="flex:1;overflow-y:auto;padding:20px;scroll-behavior:smooth">' + msgHtml + '</div>'
     + '<div style="padding:16px 20px;border-top:1px solid rgba(124,58,237,0.2);background:rgba(10,5,30,0.8)">'
     + (done
-      ? '<div style="text-align:center"><p style="color:#a78bfa;margin-bottom:12px;font-size:0.9rem">Vesper is ready to build your world from this conversation.</p>'
-        + '<button id="cobuild-finalize" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:13px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">' + (thinking ? '⏳ Building...' : '✨ Build My World') + '</button></div>'
+      ? '<div style="text-align:center"><div style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:14px 20px;margin-bottom:14px"><p style="color:#c084fc;font-weight:700;font-size:0.95rem;margin-bottom:4px">✦ Vesper has enough to build your world.</p><p style="color:#9ca3af;font-size:0.8rem">I'll generate your full world document from our conversation. You can review and tweak everything before entering.</p></div>'
+        + '<button id="cobuild-finalize" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:13px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%">' + (thinking ? '⏳ Building your world...' : '✨ Build My World →') + '</button></div>'
       : '<div style="display:flex;gap:10px;align-items:flex-end">'
         + '<textarea id="cobuild-input" placeholder="Type your answer..." rows="2" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:11px 14px;color:white;font-size:0.9rem;outline:none;resize:none"></textarea>'
         + '<button id="cobuild-send" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:11px 18px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;flex-shrink:0">→</button>'
@@ -2649,6 +2733,7 @@ function render() {
   if (state.screen==='worlds') { root.innerHTML = renderWorlds() + renderCobuildOverlay(); attachWorldsEvents(); attachCobuildEvents(); return; }
   if (state.screen==='createWorld') { root.innerHTML = renderCreateWorld() + renderCobuildOverlay(); attachCreateWorldEvents(); attachCobuildEvents(); return; }
   if (state.screen==='importWorld') { root.innerHTML = renderImportWorld(); attachImportWorldEvents(); return; }
+  if (state.screen==='cobuildReview') { root.innerHTML = renderCobuildReview(); attachCobuildReviewEvents(); return; }
   if (state.screen==='worldDetail') { root.innerHTML = renderWorldDetail(); attachWorldDetailEvents(); return; }
   if (state.screen==='createChar') { root.innerHTML = renderCreateChar(); attachCreateCharEvents(); return; }
   if (state.screen==='play') { root.innerHTML = renderPlay(); attachPlayEvents(); return; }
