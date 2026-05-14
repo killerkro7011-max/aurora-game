@@ -33,6 +33,8 @@ const KEY_STORE = 'aurora_openai_key';
 let state = {
   screen: 'home',
   apiKey: localStorage.getItem(KEY_STORE) || '',
+  agentImportNotice: null,
+  agentImportError: null,
   worlds: JSON.parse(localStorage.getItem('aurora_worlds') || '[]'),
   characters: JSON.parse(localStorage.getItem('aurora_chars') || '[]'),
   currentWorld: null,
@@ -1772,6 +1774,7 @@ function render() {
   if (!root) return;
   if (!state.apiKey) { root.innerHTML = renderKeyScreen(); attachKeyEvents(); return; }
   if (state.screen==='home') { root.innerHTML = renderHome() + renderCobuildOverlay(); attachHomeEvents(); attachCobuildEvents(); return; }
+  if (state.screen==='agentImport') { root.innerHTML = renderAgentImport(); attachAgentImportEvents(); return; }
   if (state.screen==='worlds') { root.innerHTML = renderWorlds() + renderCobuildOverlay(); attachWorldsEvents(); attachCobuildEvents(); return; }
   if (state.screen==='createWorld') { root.innerHTML = renderCreateWorld() + renderCobuildOverlay(); attachCreateWorldEvents(); attachCobuildEvents(); return; }
   if (state.screen==='importWorld') { root.innerHTML = renderImportWorld(); attachImportWorldEvents(); return; }
@@ -1909,9 +1912,64 @@ function renderHome() {
     +'<button id="btn-play" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌌 My Worlds</button>'
     +'<button id="btn-create" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:white;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">🌍 Create New World</button>'
     +'<button id="btn-import-world" style="background:rgba(124,58,237,0.18);border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:16px 32px;border-radius:16px;font-size:1rem;font-weight:600;cursor:pointer">📚 Import a Fictional World</button>'
+    +'<button id="btn-agent-import" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.4);color:#6ee7b7;padding:14px 32px;border-radius:16px;font-size:0.95rem;font-weight:600;cursor:pointer">🤖 Agent World Import</button>'
     +'<button id="btn-key" style="background:none;border:none;color:#6b7280;font-size:0.75rem;cursor:pointer;margin-top:8px">🔑 Change API Key</button>'
     +'</div></div>';
 }
+function renderAgentImport() {
+  var notice = state.agentImportNotice || '';
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0a1a0a,#030712);padding:24px;display:flex;flex-direction:column;align-items:center">'
+    +'<div style="max-width:640px;width:100%">'
+    +'<button id="btn-back-agent" style="background:none;border:none;color:#6b7280;cursor:pointer;margin-bottom:24px;font-size:0.9rem">← Back</button>'
+    +'<div style="text-align:center;margin-bottom:32px">'
+    +'<div style="font-size:3rem;margin-bottom:12px">🤖</div>'
+    +'<h2 style="font-size:1.75rem;font-weight:800;color:white;margin-bottom:8px">Agent World Import</h2>'
+    +'<p style="color:#9ca3af;font-size:0.9rem">Your background world agent can push worlds directly into Aurora.<br>Paste the agent\'s JSON output below, or let the agent write to the inbox automatically.</p>'
+    +'</div>'
+    +(notice ? '<div style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;margin-bottom:20px;color:#6ee7b7;text-align:center;font-weight:600">✅ '+esc(notice)+'</div>' : '')
+    +(state.agentImportError ? '<div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;margin-bottom:20px;color:#fca5a5">⚠️ '+esc(state.agentImportError)+'</div>' : '')
+    +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;margin-bottom:20px">'
+    +'<div style="color:#6ee7b7;font-weight:700;margin-bottom:12px;font-size:0.95rem">📋 Paste Agent JSON</div>'
+    +'<p style="color:#9ca3af;font-size:0.8rem;margin-bottom:12px">The agent should output a JSON object matching the Aurora world schema. Single world OR an array of worlds.</p>'
+    +'<textarea id="agent-json-input" rows="10" placeholder="{&quot;name&quot;: &quot;...&quot;, &quot;lore&quot;: &quot;...&quot;}" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:14px;color:#e5e7eb;font-size:0.8rem;font-family:monospace;outline:none;resize:vertical;box-sizing:border-box"></textarea>'
+    +'<button id="btn-parse-agent-json" style="margin-top:12px;width:100%;background:linear-gradient(to right,#059669,#10b981);border:none;color:white;padding:14px;border-radius:12px;font-weight:700;cursor:pointer;font-size:1rem">⬇️ Import World(s)</button>'
+    +'</div>'
+    +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;margin-bottom:20px">'
+    +'<div style="color:#60a5fa;font-weight:700;margin-bottom:12px;font-size:0.95rem">📡 Auto-Inbox (Background Agent)</div>'
+    +'<p style="color:#9ca3af;font-size:0.8rem;margin-bottom:12px">Your agent can call this in its script to push worlds automatically. Aurora checks the inbox on every page load.</p>'
+    +'<div style="background:rgba(0,0,0,0.4);border-radius:10px;padding:14px;font-family:monospace;font-size:0.75rem;color:#86efac;line-height:1.6">'
+    +'window.auroraAgentImport({<br>'
+    +'&nbsp;&nbsp;timestamp: new Date().toISOString(),<br>'
+    +'&nbsp;&nbsp;agent_name: "World Sim Agent",<br>'
+    +'&nbsp;&nbsp;worlds: [ { name: "...", lore: "...", ... } ]<br>'
+    +'});<br>'
+    +'</div>'
+    +'<button id="btn-check-inbox" style="margin-top:12px;width:100%;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.3);color:#93c5fd;padding:12px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.9rem">🔄 Check Inbox Now</button>'
+    +'</div>'
+    +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px">'
+    +'<div style="color:#c084fc;font-weight:700;margin-bottom:12px;font-size:0.95rem">📐 World JSON Schema</div>'
+    +'<p style="color:#9ca3af;font-size:0.78rem;margin-bottom:10px">Fields your agent should produce:</p>'
+    +'<div style="background:rgba(0,0,0,0.4);border-radius:10px;padding:14px;font-family:monospace;font-size:0.72rem;color:#d8b4fe;line-height:1.8">'
+    +'name &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — world name<br>'
+    +'description &nbsp;&nbsp;&nbsp;string — 3-4 sentence overview<br>'
+    +'setting &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — genre + physical nature<br>'
+    +'climate &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — climate description<br>'
+    +'magic_level &nbsp;&nbsp;&nbsp;None | Low | Medium | High | Extreme<br>'
+    +'technology_level &nbsp;None | Low | Medium | High | Extreme<br>'
+    +'danger_level &nbsp;&nbsp;None | Low | Medium | High | Extreme<br>'
+    +'population_density Sparse | Moderate | Dense | Crowded<br>'
+    +'lore &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — 6-8 sentence deep history<br>'
+    +'factions &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — named factions + goals<br>'
+    +'landmarks &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;string — named locations + significance<br>'
+    +'rules_of_nature &nbsp;string — magic system, physics rules<br>'
+    +'world_type &nbsp;&nbsp;&nbsp;&nbsp;private | event (default: private)<br>'
+    +'echo_narrative_story_url &nbsp;string — lore URL (optional)'
+    +'</div>'
+    +'</div>'
+    +'</div>'
+    +'</div>';
+}
+
 function renderImportWorld() {
   var cats = [
     { id:'books', label:'\U0001f4d6 Books', color:'#60a5fa', items:['Lord of the Rings','Dune','Harry Potter','Narnia','The Wheel of Time','A Song of Ice and Fire','The Name of the Wind','Mistborn','The Stormlight Archive','Discworld','His Dark Materials','The Witcher Saga','Eragon','The Silmarillion','Conan the Barbarian'] },
@@ -1993,13 +2051,51 @@ function attachImportWorldEvents() {
   });
 }
 
+function attachAgentImportEvents() {
+  var back = document.getElementById('btn-back-agent');
+  var parse = document.getElementById('btn-parse-agent-json');
+  var check = document.getElementById('btn-check-inbox');
+  if(back) back.addEventListener('click', function(){ state.screen='home'; state.agentImportError=null; render(); });
+  if(parse) parse.addEventListener('click', function(){
+    var ta = document.getElementById('agent-json-input');
+    if (!ta || !ta.value.trim()) { state.agentImportError = 'Paste a JSON world object or array first.'; render(); return; }
+    try {
+      var raw = ta.value.trim();
+      var cleaned = raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim();
+      var parsed = JSON.parse(cleaned);
+      var worlds = Array.isArray(parsed) ? parsed : (parsed.worlds ? parsed.worlds : [parsed]);
+      if (worlds.length === 0) { state.agentImportError = 'No valid world objects found in JSON.'; render(); return; }
+      var count = 0;
+      worlds.forEach(function(w){ var r = agentImportWorld(w); if(r) count++; });
+      state.agentImportError = null;
+      state.agentImportNotice = count + ' world' + (count > 1 ? 's' : '') + ' imported successfully!';
+      render();
+      setTimeout(function(){ state.agentImportNotice = null; render(); }, 5000);
+    } catch(e) {
+      state.agentImportError = 'Invalid JSON: ' + e.message;
+      render();
+    }
+  });
+  if(check) check.addEventListener('click', function(){
+    var n = checkAgentInbox();
+    if (n > 0) {
+      state.agentImportNotice = n + ' world' + (n > 1 ? 's' : '') + ' pulled from inbox!';
+    } else {
+      state.agentImportNotice = 'Inbox is empty or already processed.';
+    }
+    render();
+    setTimeout(function(){ state.agentImportNotice = null; render(); }, 4000);
+  });
+}
+
 function attachHomeEvents() {
-  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world'),bu=document.getElementById('btn-universe');
+  var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world'),bu=document.getElementById('btn-universe'),ba=document.getElementById('btn-agent-import');
   if(bu) bu.addEventListener('click',function(){state.screen='worlds';state.worldsTab='event';render();});
   if(bp) bp.addEventListener('click',function(){state.screen='worlds';state.worldsTab='mine';render();});
   if(bc) bc.addEventListener('click',function(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();});
   if(bk) bk.addEventListener('click',function(){state.apiKey='';localStorage.removeItem(KEY_STORE);render();});
   if(bi) bi.addEventListener('click',function(){state.screen='importWorld';state.importError=null;state.importQuery='';render();});
+  if(ba) ba.addEventListener('click',function(){state.screen='agentImport';state.agentImportError=null;state.agentImportNotice=null;render();});
 }
 
 function renderWorlds() {
