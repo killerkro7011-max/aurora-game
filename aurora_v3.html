@@ -97,6 +97,12 @@ let state = {
   expandingWorld: false,
   expandPrompt: '',
   showExpandOverlay: false,
+  // Crafting & Skills system
+  craftingSkills: [],      // [{id, name, category, level, xp, origin, description, attempts}]
+  showCrafting: false,     // crafting panel open
+  craftTab: 'skills',      // 'skills' | 'forge'
+  craftingLoading: false,
+  craftResult: null,       // last craft result toast
   // Co-creation mode
   cobuildOpen: false,
   cobuildMessages: [],   // [{role:'vesper'|'player', text:string}]
@@ -432,6 +438,103 @@ function masteryProgressBar(stat) {
 }
 
 function statGrade(v) { if(v>=151)return 'A'; if(v>=111)return 'B'; if(v>=71)return 'C'; if(v>=41)return 'D'; return 'E'; }
+
+// ── CRAFTING SYSTEM ──────────────────────────────────────────────────────────
+
+// Crafting knowledge each class starts with
+var CLASS_CRAFT_SKILLS = {
+  Blacksmith:  [{id:'ironworking',name:'Ironworking',category:'smithing',desc:'Shape iron and steel into weapons and tools.'}],
+  Warrior:     [{id:'basic_smithing',name:'Basic Smithing',category:'smithing',desc:'Rough weapon repair and crude blade-making.'}],
+  Rogue:       [{id:'leatherworking',name:'Leatherworking',category:'crafting',desc:'Craft light armor, pouches, and bindings.'}],
+  Assassin:    [{id:'leatherworking',name:'Leatherworking',category:'crafting',desc:'Craft light armor, pouches, and bindings.'},{id:'poison_craft',name:'Poison Crafting',category:'alchemy',desc:'Brew basic toxins and contact poisons.'}],
+  Ranger:      [{id:'fletching',name:'Fletching',category:'crafting',desc:'Craft bows, arrows, and hunting tools.'},{id:'basic_herbalism',name:'Basic Herbalism',category:'alchemy',desc:'Identify and use simple healing herbs.'}],
+  Hunter:      [{id:'fletching',name:'Fletching',category:'crafting',desc:'Craft bows, arrows, and hunting tools.'}],
+  Mage:        [{id:'spellcraft',name:'Spellcraft',category:'magic',desc:'Develop, modify, and refine magical spells.'}],
+  Archivist:   [{id:'spellcraft',name:'Spellcraft',category:'magic',desc:'Develop, modify, and refine magical spells.'},{id:'runecraft',name:'Runecraft',category:'magic',desc:'Inscribe runes onto items to imbue them with properties.'}],
+  Necromancer: [{id:'spellcraft',name:'Spellcraft',category:'magic',desc:'Develop, modify, and refine magical spells.'},{id:'bone_craft',name:'Bone Crafting',category:'crafting',desc:'Craft items and weapons from bone and remains.'}],
+  Shaman:      [{id:'ritual_craft',name:'Ritual Crafting',category:'magic',desc:'Create ritual items, totems, and spirit-bound objects.'}],
+  Cleric:      [{id:'sacred_craft',name:'Sacred Crafting',category:'magic',desc:'Craft holy symbols, blessed items, and wards.'}],
+  Paladin:     [{id:'sacred_craft',name:'Sacred Crafting',category:'magic',desc:'Craft holy symbols, blessed items, and wards.'},{id:'basic_smithing',name:'Basic Smithing',category:'smithing',desc:'Rough weapon repair and crude blade-making.'}],
+  Herbalist:   [{id:'herbalism',name:'Herbalism',category:'alchemy',desc:'Brew potions, salves, and remedies from plants.'},{id:'basic_herbalism',name:'Basic Herbalism',category:'alchemy',desc:'Identify and use simple healing herbs.'}],
+  Druid:       [{id:'herbalism',name:'Herbalism',category:'alchemy',desc:'Brew potions, salves, and remedies from plants.'},{id:'ritual_craft',name:'Ritual Crafting',category:'magic',desc:'Create ritual items, totems, and spirit-bound objects.'}],
+  Monk:        [{id:'ritual_craft',name:'Ritual Crafting',category:'magic',desc:'Create ritual items, totems, and spirit-bound objects.'}],
+  Scholar:     [{id:'runecraft',name:'Runecraft',category:'magic',desc:'Inscribe runes onto items to imbue them with properties.'}],
+  Merchant:    [{id:'appraisal',name:'Appraisal & Modification',category:'crafting',desc:'Identify, combine, and upgrade items for better value.'}],
+  Bard:        [{id:'instrument_craft',name:'Instrument Crafting',category:'crafting',desc:'Craft and repair musical instruments with enchanting properties.'}],
+  Duelist:     [{id:'blade_work',name:'Bladework',category:'smithing',desc:'Maintain, sharpen, and modify bladed weapons.'}],
+  Chef:        [{id:'cooking',name:'Cooking',category:'alchemy',desc:'Prepare meals that grant temporary stat buffs.'}],
+  Farmer:      [{id:'basic_herbalism',name:'Basic Herbalism',category:'alchemy',desc:'Identify and use simple healing herbs.'}],
+  Berserker:   [{id:'basic_smithing',name:'Basic Smithing',category:'smithing',desc:'Rough weapon repair and crude blade-making.'}]
+};
+
+// Stat that governs each crafting category
+var CRAFT_STAT = {
+  smithing: 'STR',
+  crafting: 'DEX',
+  alchemy:  'INT',
+  magic:    'INT',
+  cooking:  'WIS'
+};
+
+// Quality tiers by stat grade
+var CRAFT_QUALITY = {
+  E: { label: 'Crude',      rarity: 'common',    suffix: ' (Crude)',       note: 'Rough and unreliable — barely functional.' },
+  D: { label: 'Rough',      rarity: 'common',    suffix: ' (Rough)',       note: 'Serviceable but with clear flaws.' },
+  C: { label: 'Standard',   rarity: 'uncommon',  suffix: '',               note: 'Solid work — no surprises.' },
+  B: { label: 'Quality',    rarity: 'rare',      suffix: ' (Quality)',     note: 'Skilled craftsmanship with a noticeable edge.' },
+  A: { label: 'Masterwork', rarity: 'epic',      suffix: ' (Masterwork)',  note: 'Exceptional work with potential for unique traits.' }
+};
+
+// Get character's crafting skills (init from class if empty)
+function getCraftingSkills() {
+  var c = state.currentChar;
+  if (!c) return [];
+  if (!c.craftingSkills) {
+    var startSkills = CLASS_CRAFT_SKILLS[c.class] || [];
+    c.craftingSkills = startSkills.map(function(sk) {
+      return { id: sk.id, name: sk.name, category: sk.category, desc: sk.desc,
+               level: 1, xp: 0, origin: 'class', attempts: 0 };
+    });
+  }
+  return c.craftingSkills;
+}
+
+// Check if char has a specific crafting skill
+function hasCraftSkill(skillId) {
+  return getCraftingSkills().some(function(sk) { return sk.id === skillId; });
+}
+
+// Get the governing stat value for a craft category
+function getCraftStat(category) {
+  var c = state.currentChar;
+  if (!c || !c.stats) return 50;
+  var statKey = CRAFT_STAT[category] || 'STR';
+  return c.stats[statKey] || 50;
+}
+
+// Get quality tier based on stat value
+function getCraftQuality(statVal) {
+  var g = statGrade(statVal);
+  // A- maps to A for crafting
+  return CRAFT_QUALITY[g] || CRAFT_QUALITY['C'];
+}
+
+// Add XP to a crafting skill, level it up if enough
+function gainCraftXP(skillId, xpAmount) {
+  var skills = getCraftingSkills();
+  var sk = skills.find(function(s) { return s.id === skillId; });
+  if (!sk) return;
+  sk.xp = (sk.xp || 0) + xpAmount;
+  sk.attempts = (sk.attempts || 0) + 1;
+  // Level up at 100 XP per level
+  var needed = sk.level * 100;
+  if (sk.xp >= needed) {
+    sk.xp -= needed;
+    sk.level++;
+    state.messages.push({ role: 'system', text: '✨ ' + sk.name + ' advanced to Level ' + sk.level + '!' });
+  }
+  saveChars();
+}
 function statColor(g) { return {A:'#4ade80',B:'#60a5fa',C:'#facc15',D:'#f97316',E:'#f87171'}[g]||'#9ca3af'; }
 function masteryStart(level) { if(level>=91)return 150; if(level>=61)return 110; if(level>=31)return 70; if(level>=11)return 40; return 10; }
 function applyMasteryForLevel(ch) { var base=masteryStart(ch.level||1); ch.mastery=ch.mastery||{}; ['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){if(!ch.mastery[s]||ch.mastery[s]<base)ch.mastery[s]=base;}); }
@@ -642,6 +745,11 @@ function buildSystemPrompt() {
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
     + '- Inventory (' + (state.gold||0) + 'g gold): ' + (function(){var inv=state.currentChar&&state.currentChar.inventoryItems?state.currentChar.inventoryItems:[];if(inv.length===0)return c.inventory||'Basic supplies';var eq=inv.filter(function(i){return i.equipped;}).map(function(i){return i.name+'[E]';});var un=inv.filter(function(i){return !i.equipped;}).map(function(i){return i.name+(i.qty>1?'x'+i.qty:'');});return (eq.length?'Equipped: '+eq.join(', ')+'. ':'')+(un.length?'Carrying: '+un.join(', '):'');})() + '\n'
     + '- Location: ' + (c.current_location || w.name) + '\n'
+    + (function(){
+      var skills = state.currentChar && state.currentChar.craftingSkills ? state.currentChar.craftingSkills : [];
+      if (skills.length === 0) return '';
+      return '- Crafting Skills: ' + skills.map(function(sk){ return sk.name + '(Lv.' + sk.level + ')'; }).join(', ') + '\n';
+    })()
     + '- Stats: STR ' + (c.stats.STR||50) + '(' + statGrade(c.stats.STR||50) + ') DEX ' + (c.stats.DEX||50) + '(' + statGrade(c.stats.DEX||50) + ') INT ' + (c.stats.INT||50) + '(' + statGrade(c.stats.INT||50) + ') CHA ' + (c.stats.CHA||50) + '(' + statGrade(c.stats.CHA||50) + ') SMY ' + (c.stats.SMY||50) + '(' + statGrade(c.stats.SMY||50) + ')\n'
     + '- Health: ' + state.charHP + '/100 | Level: ' + c.level + ' | Mode: ' + (c.progression_mode==='legend'?'Legend (no growth)':'Journey (mastery-driven)') + '\n\n'
     + 'CAMPAIGN CHRONICLE:\n' + (state.campaignSummary || '(Just started.)') + '\n\n'
@@ -702,6 +810,10 @@ async function startGame() {
   state.showJournal = false; state.showStats = false; state.showInventory = false; state.showShop = false;
   state.deathScreen = false; state.lootToast = null;
   if (!state.gold) state.gold = 10;
+  // Init crafting skills from class
+  if (state.currentChar && !state.currentChar.craftingSkills) {
+    getCraftingSkills(); // triggers init
+  }
   // Initialize structured inventory if needed
   getInventory();
   state.loading = true;
@@ -724,8 +836,29 @@ async function startGame() {
   scrollToBottom();
 }
 
+// Check for desperation skill creation in player input
+function checkDesperationIntent(text) {
+  var lower = text.toLowerCase();
+  var desperationPhrases = ['in desperation','desperately','i try to force','i force the','with everything i have','last resort','i reach for','i channel','i attempt to cast','dying i','about to die','no choice but','i have to try','panic i'];
+  var magicPhrases = ['mana','spell','magic','fire','lightning','frost','shadow','light','heal','force','energy','power','blast','bolt','wave','shield'];
+  var hasDesperation = desperationPhrases.some(function(p){ return lower.includes(p); });
+  var hasMagic = magicPhrases.some(function(p){ return lower.includes(p); });
+  if (hasDesperation && hasMagic) return true;
+  if (lower.includes('create a spell') || lower.includes('invent a spell') || lower.includes('develop a spell')) return true;
+  return false;
+}
+
 async function sendMessage(text) {
   if (!text.trim() || state.loading) return;
+
+  // ── DESPERATION SKILL CHECK ────────────────────────────────────────────────
+  if (checkDesperationIntent(text) && state.inCombat) {
+    state.input = '';
+    state.messages.push({ role:'player', text: text.trim(), id: Date.now() });
+    desperationSkillCreate(text.trim());
+    return;
+  }
+
   state.input = '';
   state.messages.push({ role:'player', text: text.trim(), id: Date.now() });
   addToMemory('player', text.trim());
@@ -1510,6 +1643,233 @@ function renderStatSheet() {
     +'</div>';
 }
 
+// ── AI CRAFTING ENGINE ──────────────────────────────────────────────────────
+
+async function performCraft(craftType, materialName, skillId, isReforge, originalItemId) {
+  if (!state.apiKey) { alert('Set your API key first.'); return; }
+  var c = state.currentChar, w = state.currentWorld;
+  if (!c || !w) return;
+
+  var skills = getCraftingSkills();
+  var skill = skills.find(function(s) { return s.id === skillId; });
+  if (!skill) return;
+
+  var statVal = getCraftStat(skill.category);
+  var quality = getCraftQuality(statVal);
+  var statKey = CRAFT_STAT[skill.category] || 'STR';
+  var originalItem = originalItemId ? (c.inventoryItems||[]).find(function(i){ return i.id===originalItemId; }) : null;
+
+  state.craftingLoading = true;
+  state.craftResult = null;
+  render();
+
+  var reforgeCtx = isReforge && originalItem
+    ? 'This is a REFORGE of an existing item: "' + originalItem.name + '" ('+originalItem.rarity+' '+originalItem.type+'). The character has grown since they made it. The item should improve in quality to reflect their current stats. Keep the same thematic identity but upgrade it.'
+    : '';
+
+  var desperationCtx = craftType === 'desperation'
+    ? 'IMPORTANT: This craft happened in DESPERATION — a life or death moment forced the character to attempt this without preparation. The result should feel raw, personal, and named after the moment or circumstances. It may be imperfect but it is theirs. Give it a unique, evocative name based on the situation.'
+    : '';
+
+  var prompt = 'You are the narrator for an RPG. A character is crafting something.\n'
+    + 'Character: ' + c.name + ' (' + c.class + ', Level ' + (c.level||1) + ')\n'
+    + 'World: ' + w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')\n'
+    + 'Crafting Skill Used: ' + skill.name + ' (Level ' + skill.level + ')\n'
+    + 'Material / Intent: ' + materialName + '\n'
+    + 'Governing Stat: ' + statKey + ' = ' + statVal + ' (Grade ' + statGrade(statVal) + ')\n'
+    + 'Quality Tier: ' + quality.label + ' — ' + quality.note + '\n'
+    + reforgeCtx + '\n'
+    + desperationCtx + '\n'
+    + 'Generate the crafted item AND a 2-3 sentence narrator description of the crafting process that reflects the character skill level and the quality of the result.\n'
+    + 'The item name should reflect the quality tier AND the world setting AND the character backstory if relevant.\n'
+    + 'Return ONLY valid JSON: {"item":{"name":string,"rarity":"' + quality.rarity + '","type":"weapon|armor|consumable|tool|material|misc","effect":string,"value":number,"crafted":true,"craftedBy":"' + c.name + '","skillUsed":"' + skill.name + '","qualityTier":"' + quality.label + '","canReforge":true},"narrative":string}';
+
+  try {
+    var resp = await callAI([{ role:'user', content: prompt }], 500);
+    var clean = resp.replace(/```json|```/g,'').trim();
+    var parsed = JSON.parse(clean);
+    var item = parsed.item;
+    item.id = 'craft_' + Date.now();
+    item.qty = 1;
+
+    // Remove material from inventory if it exists
+    if (!isReforge) {
+      var inv = getInventory();
+      var matIdx = inv.findIndex(function(i){ return i.name.toLowerCase().includes(materialName.toLowerCase()) || materialName.toLowerCase().includes(i.name.toLowerCase()); });
+      if (matIdx !== -1) {
+        if (inv[matIdx].qty > 1) { inv[matIdx].qty--; }
+        else { inv.splice(matIdx, 1); }
+        saveInventory(inv);
+      }
+    }
+
+    // If reforging, remove the old item
+    if (isReforge && originalItem) {
+      var inv2 = getInventory();
+      var oldIdx = inv2.findIndex(function(i){ return i.id === originalItemId; });
+      if (oldIdx !== -1) inv2.splice(oldIdx, 1);
+      saveInventory(inv2);
+    }
+
+    // Add crafted item
+    var curInv = getInventory();
+    curInv.push(item);
+    saveInventory(curInv);
+
+    // Grant XP to skill
+    gainCraftXP(skillId, 25 + (skill.level * 5));
+
+    // Stat mastery bump for governing stat
+    if (c.mastery && c.mastery[statKey] !== undefined) {
+      c.mastery[statKey] = Math.min(200, (c.mastery[statKey]||10) + 1);
+    }
+
+    // Show narrative in game messages
+    state.messages.push({ role: 'narrator', text: parsed.narrative });
+    state.messages.push({ role: 'system', text: '🔨 Crafted: ' + item.name + ' [' + quality.label + '] added to inventory.' });
+
+    state.craftResult = { success: true, item: item, narrative: parsed.narrative };
+    state.craftingLoading = false;
+    state.showCrafting = false;
+    saveChars();
+    render();
+  } catch(e) {
+    state.craftingLoading = false;
+    state.craftResult = { success: false, error: 'Crafting failed — ' + e.message };
+    render();
+  }
+}
+
+// ── AI DESPERATION SKILL CREATION ────────────────────────────────────────────
+
+async function desperationSkillCreate(intent) {
+  if (!state.apiKey) return;
+  var c = state.currentChar, w = state.currentWorld;
+  if (!c || !w) return;
+
+  // Determine if character has any related magical/skill foundation
+  var skills = getCraftingSkills();
+  var hasSpellcraft = skills.some(function(s){ return s.category === 'magic'; });
+  var intStat = c.stats && c.stats.INT ? c.stats.INT : 50;
+  var wis = c.stats && c.stats.WIS ? c.stats.WIS : 50;
+  var smy = c.stats && c.stats.SMY ? c.stats.SMY : 50;
+  var avgMagicStat = Math.round((intStat + wis + smy) / 3);
+
+  // Hard fail: no magical foundation AND stats too low
+  if (!hasSpellcraft && avgMagicStat < 35) {
+    state.messages.push({ role: 'narrator', text: 'You reach for the mana — desperate, terrified — but there is nothing there to grab. Your hands are those of a fighter, not a mage. The power slips through your fingers like smoke.' });
+    render();
+    return;
+  }
+
+  state.craftingLoading = true;
+  render();
+
+  var quality = getCraftQuality(avgMagicStat);
+  var prompt = 'You are the narrator for a dark fantasy RPG. A character just attempted to create a new magical ability or spell in a desperate, life-or-death moment.\n'
+    + 'Character: ' + c.name + ' (' + c.class + ', Level ' + (c.level||1) + ')\n'
+    + 'Backstory: ' + (c.backstory||'unknown').slice(0,200) + '\n'
+    + 'World: ' + w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')\n'
+    + 'What they attempted: ' + intent + '\n'
+    + 'Magic foundation: ' + (hasSpellcraft ? 'Yes — has spellcraft training' : 'No formal training — raw instinct only') + '\n'
+    + 'INT: ' + intStat + '  WIS: ' + wis + '  SMY: ' + smy + '  Avg: ' + avgMagicStat + ' (Grade ' + statGrade(avgMagicStat) + ')\n'
+    + 'Quality Tier: ' + quality.label + ' — ' + quality.note + '\n'
+    + 'RULES:\n'
+    + '- The skill/spell is UNIQUE to this character. Name it after the moment, the world, the emotion, or their backstory.\n'
+    + '- If stats are low: the ability works but is unstable, costly, or partially backfires. Describe this vividly.\n'
+    + '- If stats are high: a raw but powerful ability emerges. Still imperfect — born in panic, not study.\n'
+    + '- The character can refine this over time. This is the FIRST version.\n'
+    + 'Return ONLY valid JSON: {"skillName":string,"skillId":string(lowercase_underscore),"category":"magic","description":string,"effect":string,"qualityTier":"' + quality.label + '","canRefine":true,"narrative":string(3-4 sentences of what happened)}';
+
+  try {
+    var resp = await callAI([{role:'user',content:prompt}], 600);
+    var clean = resp.replace(/```json|```/g,'').trim();
+    var parsed = JSON.parse(clean);
+
+    // Add to character's crafting skills
+    var newSkill = {
+      id: parsed.skillId || ('desperation_' + Date.now()),
+      name: parsed.skillName,
+      category: parsed.category || 'magic',
+      desc: parsed.description,
+      effect: parsed.effect,
+      level: 1, xp: 0,
+      origin: 'desperation',
+      qualityTier: parsed.qualityTier,
+      attempts: 1,
+      canRefine: true
+    };
+    if (!c.craftingSkills) c.craftingSkills = [];
+    c.craftingSkills.push(newSkill);
+
+    // Narrative + system message
+    state.messages.push({ role: 'narrator', text: parsed.narrative });
+    state.messages.push({ role: 'system', text: '⚡ New ability born in desperation: ' + newSkill.name + ' [' + quality.label + '] — added to your Skills.' });
+
+    // Spellcraft skill gained if they didn't have it
+    if (!hasSpellcraft) {
+      c.craftingSkills.push({ id:'spellcraft', name:'Spellcraft', category:'magic', desc:'Develop and refine magical abilities.', level:1, xp:10, origin:'breakthrough', attempts:0 });
+      state.messages.push({ role: 'system', text: '✨ New knowledge: Spellcraft unlocked — the barrier is broken.' });
+    }
+
+    state.craftingLoading = false;
+    saveChars();
+    render();
+  } catch(e) {
+    state.craftingLoading = false;
+    state.messages.push({ role:'system', text:'The attempt fails — the magic slips away.' });
+    render();
+  }
+}
+
+// ── SKILL REFINEMENT (leveling up a created skill) ───────────────────────────
+
+async function refineSkill(skillId) {
+  var c = state.currentChar, w = state.currentWorld;
+  if (!c || !w) return;
+  var skill = (c.craftingSkills||[]).find(function(s){ return s.id===skillId; });
+  if (!skill) return;
+
+  var statVal = getCraftStat(skill.category);
+  var quality = getCraftQuality(statVal);
+
+  state.craftingLoading = true;
+  render();
+
+  var prompt = 'A character is refining a skill or ability they developed earlier.\n'
+    + 'Character: ' + c.name + ' (' + c.class + ', Level ' + (c.level||1) + ')\n'
+    + 'World: ' + w.name + '\n'
+    + 'Skill Being Refined: ' + skill.name + ' (Level ' + skill.level + ')\n'
+    + 'Current Description: ' + skill.desc + '\n'
+    + 'Origin: ' + (skill.origin||'learned') + '\n'
+    + 'Governing Stat: ' + (CRAFT_STAT[skill.category]||'INT') + ' = ' + statVal + ' (Grade ' + statGrade(statVal) + ')\n'
+    + 'New Quality Tier: ' + quality.label + '\n'
+    + 'Write a 2-sentence narrator description of the refinement session and return updated skill data.\n'
+    + 'Return ONLY valid JSON: {"description":string(updated description reflecting new power level),"effect":string,"qualityTier":"' + quality.label + '","narrative":string}';
+
+  try {
+    var resp = await callAI([{role:'user',content:prompt}], 400);
+    var clean = resp.replace(/```json|```/g,'').trim();
+    var parsed = JSON.parse(clean);
+
+    skill.desc = parsed.description;
+    skill.effect = parsed.effect;
+    skill.qualityTier = parsed.qualityTier;
+    skill.level++;
+    skill.xp = 0;
+
+    state.messages.push({ role:'narrator', text: parsed.narrative });
+    state.messages.push({ role:'system', text:'⚡ ' + skill.name + ' refined to Level ' + skill.level + ' [' + quality.label + '].' });
+
+    state.craftingLoading = false;
+    saveChars();
+    render();
+  } catch(e) {
+    state.craftingLoading = false;
+    render();
+  }
+}
+
 function renderInventoryPanel() {
   var inv = getInventory();
   var c = state.currentChar;
@@ -1563,6 +1923,101 @@ function renderInventoryPanel() {
     +'</div>';
 }
 
+
+// ── CRAFTING PANEL ───────────────────────────────────────────────────────────
+
+function renderCraftingPanel() {
+  var c = state.currentChar;
+  if (!c) return '';
+  var activeTab = state.craftTab || 'skills';
+  var skills = getCraftingSkills();
+
+  // ── SKILLS TAB ──────────────────────────────────────────────────────────────
+  var skillsHtml = skills.length === 0
+    ? '<div style="text-align:center;padding:40px 0;color:#6b7280"><div style="font-size:2rem;margin-bottom:8px">📖</div><div style="font-size:0.85rem">No crafting knowledge yet.</div><div style="font-size:0.75rem;margin-top:6px;color:#4b5563">Find a teacher, read a tome,<br>or forge something in desperation.</div></div>'
+    : skills.map(function(sk) {
+        var catColor = {smithing:'#fb923c',crafting:'#34d399',alchemy:'#a78bfa',magic:'#60a5fa',cooking:'#facc15'}[sk.category]||'#9ca3af';
+        var originBadge = sk.origin==='desperation' ? '<span style="font-size:0.6rem;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:1px 6px;border-radius:9999px;margin-left:4px">BORN IN FIRE</span>'
+          : sk.origin==='breakthrough' ? '<span style="font-size:0.6rem;background:rgba(250,204,21,0.15);color:#fbbf24;border:1px solid rgba(250,204,21,0.3);padding:1px 6px;border-radius:9999px;margin-left:4px">BREAKTHROUGH</span>'
+          : sk.origin==='class' ? '<span style="font-size:0.6rem;background:rgba(99,102,241,0.15);color:#818cf8;border:1px solid rgba(99,102,241,0.3);padding:1px 6px;border-radius:9999px;margin-left:4px">CLASS</span>' : '';
+        var xpNeeded = (sk.level||1) * 100;
+        var xpPct = Math.min(100, Math.round(((sk.xp||0)/xpNeeded)*100));
+        var canRefine = sk.canRefine && sk.xp >= xpNeeded * 0.5;
+        return '<div style="padding:12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);margin-bottom:8px">'
+          +'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">'
+          +'<div><div style="font-weight:700;font-size:0.85rem;color:white">'+esc(sk.name)+originBadge+'</div>'
+          +'<div style="font-size:0.7rem;color:'+catColor+';text-transform:uppercase;letter-spacing:0.05em;margin-top:1px">'+sk.category+' · Lv.'+sk.level+'</div></div>'
+          +(canRefine?'<button class="refine-skill-btn" data-id="'+sk.id+'" style="font-size:0.68rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(96,165,250,0.4);background:rgba(96,165,250,0.1);color:#60a5fa;cursor:pointer">⚡ Refine</button>':'')
+          +'</div>'
+          +'<div style="font-size:0.75rem;color:#6b7280;margin-bottom:8px">'+esc(sk.desc)+'</div>'
+          +(sk.effect?'<div style="font-size:0.72rem;color:#a78bfa;margin-bottom:8px;font-style:italic">Effect: '+esc(sk.effect)+'</div>':'')
+          +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<div style="flex:1;height:4px;background:rgba(255,255,255,0.07);border-radius:9999px"><div style="height:100%;width:'+xpPct+'%;background:'+catColor+';border-radius:9999px;transition:width 0.3s"></div></div>'
+          +'<span style="font-size:0.65rem;color:#4b5563">'+( sk.xp||0)+'/'+xpNeeded+' XP</span>'
+          +'</div>'
+          +'</div>';
+      }).join('');
+
+  // ── FORGE TAB ────────────────────────────────────────────────────────────────
+  var inv = getInventory();
+  var materials = inv.filter(function(i){ return i.type==='material'; });
+  var craftedItems = inv.filter(function(i){ return i.crafted; });
+
+  var forgeHtml = '<div style="padding-bottom:8px">'
+    // Craft new item
+    +'<div style="margin-bottom:14px">'
+    +'<div style="font-size:0.75rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Craft Something New</div>'
+    +(skills.length===0
+      ? '<div style="font-size:0.8rem;color:#4b5563;text-align:center;padding:16px 0">No crafting skills yet.</div>'
+      : '<div style="margin-bottom:8px">'
+        +'<label style="font-size:0.72rem;color:#6b7280;display:block;margin-bottom:4px">Material or Intent</label>'
+        +'<input id="craft-material-input" placeholder="e.g. iron ore, moonflower herbs, dragon scale..." style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-size:0.8rem;outline:none" value="'+(state.craftMaterialInput||'')+'" />'
+        +'</div>'
+        +'<div style="margin-bottom:8px">'
+        +'<label style="font-size:0.72rem;color:#6b7280;display:block;margin-bottom:4px">Using Skill</label>'
+        +'<select id="craft-skill-select" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:#0a0a14;color:white;font-size:0.8rem">'
+        +skills.map(function(sk){ return '<option value="'+sk.id+'">'+sk.name+' (Lv.'+sk.level+')</option>'; }).join('')
+        +'</select>'
+        +'</div>'
+        +'<button id="btn-do-craft" style="width:100%;padding:9px;border-radius:8px;border:none;background:linear-gradient(to right,#7c3aed,#9333ea);color:white;font-weight:700;font-size:0.82rem;cursor:pointer">'
+        +(state.craftingLoading?'⚙️ Crafting...':'🔨 Craft Item')
+        +'</button>'
+    )
+    +'</div>'
+    // Reforge existing crafted items
+    +(craftedItems.length>0
+      ? '<div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">'
+        +'<div style="font-size:0.75rem;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Reforge Existing Items</div>'
+        +craftedItems.map(function(item){
+            var rc = {common:'#9ca3af',uncommon:'#4ade80',rare:'#60a5fa',epic:'#a855f7',legendary:'#f59e0b'}[item.rarity]||'#9ca3af';
+            return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);margin-bottom:6px">'
+              +'<div><div style="font-size:0.82rem;font-weight:600;color:'+rc+'">'+esc(item.name)+'</div>'
+              +'<div style="font-size:0.7rem;color:#6b7280">'+esc(item.qualityTier||item.rarity)+' · Crafted by you</div></div>'
+              +'<button class="reforge-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:5px 10px;border-radius:6px;border:1px solid rgba(251,146,60,0.4);background:rgba(251,146,60,0.1);color:#fb923c;cursor:pointer">🔥 Reforge</button>'
+              +'</div>';
+          }).join('')
+        +'</div>'
+      : '')
+    +'</div>';
+
+  return '<div style="position:fixed;top:0;right:'+(state.showInventory?'320px':'0')+';width:300px;height:100vh;background:#090914;border-left:1px solid rgba(124,58,237,0.2);z-index:149;display:flex;flex-direction:column;overflow:hidden">'
+    // Header
+    +'<div style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
+    +'<div><div style="font-weight:700;font-size:0.88rem;color:white">⚒️ Crafting & Skills</div>'
+    +'<div style="font-size:0.68rem;color:#9ca3af">'+skills.length+' skill'+(skills.length===1?'':'s')+' known</div></div>'
+    +'<button id="btn-close-crafting" style="background:none;border:none;color:#6b7280;font-size:1rem;cursor:pointer">✕</button>'
+    +'</div>'
+    // Tabs
+    +'<div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">'
+    +'<button id="craft-tab-skills" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='skills'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='skills'?'#a855f7':'#6b7280')+'">📖 Skills</button>'
+    +'<button id="craft-tab-forge" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='forge'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='forge'?'#a855f7':'#6b7280')+'">🔨 Forge</button>'
+    +'</div>'
+    // Content
+    +'<div style="flex:1;overflow-y:auto;padding:12px">'
+    +(activeTab==='skills' ? skillsHtml : forgeHtml)
+    +'</div>'
+    +'</div>';
+}
 
 // ── SHOP PANEL ────────────────────────────────────────────────────────────────
 function renderShopPanel() {
@@ -1995,6 +2450,52 @@ document.addEventListener('keydown', function(e) {
     render();
   }
 });
+
+function attachCraftingEvents() {
+  // Tabs
+  var tabSkills = document.getElementById('craft-tab-skills');
+  var tabForge  = document.getElementById('craft-tab-forge');
+  if(tabSkills) tabSkills.addEventListener('click', function(){ state.craftTab='skills'; render(); });
+  if(tabForge)  tabForge.addEventListener('click',  function(){ state.craftTab='forge';  render(); });
+
+  // Close
+  var close = document.getElementById('btn-close-crafting');
+  if(close) close.addEventListener('click', function(){ state.showCrafting=false; render(); });
+
+  // Craft button
+  var doCraft = document.getElementById('btn-do-craft');
+  if(doCraft) doCraft.addEventListener('click', function(){
+    var matInput = document.getElementById('craft-material-input');
+    var skillSel = document.getElementById('craft-skill-select');
+    if(!matInput || !skillSel) return;
+    var mat = matInput.value.trim();
+    if(!mat){ alert('Enter a material or intent.'); return; }
+    state.craftMaterialInput = mat;
+    performCraft('normal', mat, skillSel.value, false, null);
+  });
+
+  // Reforge buttons
+  document.querySelectorAll('.reforge-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var itemId = btn.dataset.id;
+      var inv = getInventory();
+      var item = inv.find(function(i){ return i.id===itemId; });
+      if(!item) return;
+      var skills = getCraftingSkills();
+      // Pick best skill for this item's type
+      var skillId = skills.length > 0 ? skills[0].id : null;
+      if(!skillId){ alert('No crafting skills to reforge with.'); return; }
+      performCraft('reforge', item.name, skillId, true, itemId);
+    });
+  });
+
+  // Refine skill buttons
+  document.querySelectorAll('.refine-skill-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      refineSkill(btn.dataset.id);
+    });
+  });
+}
 
 function attachDevPanelEvents() {
   var closeBtn = document.getElementById('dev-close');
@@ -3000,6 +3501,7 @@ function renderPlay() {
   return (state.devMode ? renderDevPanel() : '') + (state.deathScreen ? renderDeathScreen() : '')
     + renderLootToast()
     + (state.npcConvo ? renderNpcConvoModal() : '') + toast
+    +(state.showCrafting ? renderCraftingPanel() : '')
     +(state.showInventory ? renderInventoryPanel() : '')
     +(state.showShop ? renderShopPanel() : '')
     +(state.showJournal?renderJournal():'')
@@ -3012,6 +3514,7 @@ function renderPlay() {
     +'<div style="display:flex;gap:6px">'
     +'<button id="btn-save-chap" style="font-size:0.75rem;background:rgba(255,255,255,0.1);border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">💾</button>'
     +'<button id="btn-toggle-stats" style="font-size:0.75rem;background:'+(state.showStats?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">📊</button>'
+    +'<button id="btn-toggle-crafting" style="font-size:0.75rem;background:'+(state.showCrafting?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">⚒️</button>'
     +'<button id="btn-toggle-inv" style="font-size:0.75rem;background:'+(state.showInventory?'rgba(250,204,21,0.2)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">🎒 <span style=\'color:#facc15\'>'+state.gold+'g</span></button>'
     +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
     +'</div></div>'
@@ -3058,6 +3561,8 @@ function attachPlayEvents() {
   if(ex) ex.addEventListener('click',function(){state.screen='worldDetail';render();});
   if(sc) sc.addEventListener('click',function(){var last=state.messages.filter(function(m){return m.role==='narrator';}).pop();saveChapter(last?last.text:'Start of journey.');});
   if(ts) ts.addEventListener('click',function(){state.showStats=!state.showStats;render();scrollToBottom();});
+  var tcr=document.getElementById('btn-toggle-crafting');
+  if(tcr) tcr.addEventListener('click',function(){ state.showCrafting=!state.showCrafting; render(); });
   if(tj) tj.addEventListener('click',function(){state.showJournal=!state.showJournal;render();scrollToBottom();});
   if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
   // Inventory + Shop
@@ -3127,6 +3632,8 @@ function attachPlayEvents() {
   if(npcInp) npcInp.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendNpcMessage(npcInp.value);npcInp.value='';}});
   document.querySelectorAll('.npc-quick-btn').forEach(function(b){b.addEventListener('click',function(){sendNpcMessage(b.dataset.q);});});
   scrollToBottom();
+  // Crafting panel
+  if (state.showCrafting) attachCraftingEvents();
   // Dev panel
   if (state.devMode) attachDevPanelEvents();
 }
