@@ -2212,7 +2212,8 @@ async function cobuildSend(playerText) {
     state.cobuildMessages.push({ role: 'vesper', text: displayReply });
     if (isDone) state.cobuildDone = true;
   } catch(e) {
-    state.cobuildMessages.push({ role: 'vesper', text: 'Something went wrong — try again?' });
+    console.error('cobuildSend error:', e);
+    state.cobuildMessages.push({ role: 'vesper', text: 'Something went wrong: ' + (e.message || String(e)) });
   }
   state.cobuildThinking = false;
   render(); setTimeout(cobuildScrollToBottom, 50);
