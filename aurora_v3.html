@@ -581,17 +581,23 @@ function skillOutcome(r) {
 // ---- AI Core ----
 async function callAI(system, user, maxTokens) {
   maxTokens = maxTokens || 600;
+  var body = JSON.stringify({
+    model: 'gpt-4o-mini',
+    messages: [{ role:'system', content:system },{ role:'user', content:user }],
+    max_tokens: maxTokens,
+    temperature: 0.85,
+  });
   var res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.apiKey },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role:'system', content:system },{ role:'user', content:user }],
-      max_tokens: maxTokens,
-      temperature: 0.85,
-    })
+    body: body
   });
-  if (!res.ok) { var e = await res.json(); throw new Error(e.error && e.error.message || 'API error'); }
+  if (!res.ok) {
+    var errData = await res.json();
+    var msg = (errData.error && errData.error.message) || ('HTTP ' + res.status);
+    console.error('callAI failed:', res.status, msg);
+    throw new Error(msg);
+  }
   var data = await res.json();
   return data.choices[0].message.content.trim();
 }
