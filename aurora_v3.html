@@ -581,25 +581,27 @@ function skillOutcome(r) {
 // ---- AI Core ----
 async function callAI(system, user, maxTokens) {
   maxTokens = maxTokens || 600;
-  var body = JSON.stringify({
-    model: 'gpt-4o-mini',
-    messages: [{ role:'system', content:system },{ role:'user', content:user }],
-    max_tokens: maxTokens,
-    temperature: 0.85,
-  });
-  var res = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Route through backend proxy to avoid CORS issues
+  var res = await fetch('https://api.base44.com/api/apps/6a003b64ed572e57af35b196/functions/aiProxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + state.apiKey },
-    body: body
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey: state.apiKey,
+      system: system,
+      user: user,
+      maxTokens: maxTokens,
+      model: 'gpt-4o-mini'
+    })
   });
   if (!res.ok) {
     var errData = await res.json();
-    var msg = (errData.error && errData.error.message) || ('HTTP ' + res.status);
-    console.error('callAI failed:', res.status, msg);
+    var msg = (errData.error) || ('HTTP ' + res.status);
+    console.error('callAI proxy failed:', res.status, msg);
     throw new Error(msg);
   }
   var data = await res.json();
-  return data.choices[0].message.content.trim();
+  if (data.error) throw new Error(data.error);
+  return data.result;
 }
 
 // ---- Rolling Campaign Memory ----
@@ -3586,7 +3588,16 @@ function renderPlay() {
       var wrapStyle = hasSpeech ? '' : 'font-style:italic;color:#c7d2fe;';
       return '<div style="display:flex;justify-content:flex-end;margin:6px 0"><div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);border-radius:16px;border-top-right-radius:3px;padding:10px 16px;max-width:70%;font-size:0.875rem;'+wrapStyle+'">'+playerHtml+'</div></div>';
     }
-    if(msg.role==='narrator') return '<div style="background:linear-gradient(135deg,#111827,rgba(88,28,135,0.15));border:1px solid rgba(88,28,135,0.3);border-radius:16px;border-top-left-radius:3px;padding:18px;margin:10px 0;box-shadow:0 4px 20px rgba(0,0,0,0.3)"><div style="font-size:0.65rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px">📖 Narrator</div><p style="font-size:0.875rem;line-height:1.75;color:#f3f4f6;white-space:pre-line">'+esc(msg.text)+'</p></div>';
+    if(msg.role==='narrator') {
+      var msgId = 'msg_' + Math.random().toString(36).slice(2,8);
+      return '<div style="background:linear-gradient(135deg,#111827,rgba(88,28,135,0.15));border:1px solid rgba(88,28,135,0.3);border-radius:16px;border-top-left-radius:3px;padding:18px;margin:10px 0;box-shadow:0 4px 20px rgba(0,0,0,0.3);position:relative" class="narrator-msg">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<div style="font-size:0.65rem;font-weight:700;color:#a855f7;text-transform:uppercase;letter-spacing:0.05em">📖 Narrator</div>'+
+        '<button class="copy-msg-btn" data-text="'+esc(msg.text.replace(/"/g,"&quot;"))+'" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:#6b7280;padding:3px 9px;border-radius:8px;font-size:0.65rem;cursor:pointer;transition:all 0.2s" title="Copy">📋 Copy</button>'+
+        '</div>'+
+        '<p style="font-size:0.875rem;line-height:1.75;color:#f3f4f6;white-space:pre-line;margin:0">'+esc(msg.text)+'</p>'+
+        '</div>';
+    }
     return '';
   }).join('');
 
@@ -3641,6 +3652,7 @@ function renderPlay() {
     +'<div><div style="font-weight:700;font-size:0.875rem">📖 '+esc(w.name)+(state.inCombat?' <span style="font-size:0.7rem;background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:2px 8px;border-radius:9999px">⚔️ COMBAT</span>':'')+'</div>'
     +'<div style="font-size:0.75rem;color:#a855f7">'+esc(c.name)+' · '+esc(c.class)+' · <span id="btn-dev-secret" style="cursor:default;user-select:none" title="">Turn '+state.turnCount+'</span>'+(state.devTapCount>0&&state.devTapCount<4?'<span style="font-size:0.55rem;color:rgba(147,51,234,0.4);margin-left:3px">'+'●'.repeat(state.devTapCount)+'</span>':'')+'</div></div></div>'
     +'<div style="display:flex;gap:6px">'
+    +(w&&w.echo_narrative_story_url?'<a id="btn-echo-narrative" href="'+w.echo_narrative_story_url+'" target="_blank" style="font-size:0.75rem;background:rgba(234,179,8,0.15);border:1px solid rgba(234,179,8,0.3);color:#fbbf24;padding:5px 10px;border-radius:9999px;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:3px" title="Open EchoNarrative lore">📖 Lore</a>':'')
     +'<button id="btn-save-chap" style="font-size:0.75rem;background:rgba(255,255,255,0.1);border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">💾</button>'
     +'<button id="btn-toggle-stats" style="font-size:0.75rem;background:'+(state.showStats?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">📊</button>'
     +'<button id="btn-toggle-crafting" style="font-size:0.75rem;background:'+(state.showCrafting?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">⚒️</button>'
@@ -3676,6 +3688,24 @@ function renderPlay() {
 }
 
 function attachPlayEvents() {
+  // Wire copy buttons on narrator messages
+  document.querySelectorAll('.copy-msg-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var text = btn.getAttribute('data-text') || '';
+      // Decode html entities back to plain text
+      var tmp = document.createElement('textarea');
+      tmp.innerHTML = text;
+      navigator.clipboard.writeText(tmp.value).then(function() {
+        btn.textContent = '✅ Copied!';
+        btn.style.color = '#4ade80';
+        setTimeout(function() { btn.textContent = '📋 Copy'; btn.style.color = '#6b7280'; }, 2000);
+      }).catch(function() {
+        btn.textContent = '❌ Failed';
+        setTimeout(function() { btn.textContent = '📋 Copy'; btn.style.color = '#6b7280'; }, 2000);
+      });
+    });
+  });
+
   var ex=document.getElementById('btn-exit-play'),sc=document.getElementById('btn-save-chap'),ts=document.getElementById('btn-toggle-stats'),tj=document.getElementById('btn-toggle-journal'),send=document.getElementById('btn-send'),inp=document.getElementById('play-input'),cj=document.getElementById('btn-close-journal');
   // Secret 4-tap dev unlock — click "Turn N" text 4 times within 3 seconds
   var devSecret = document.getElementById('btn-dev-secret');
