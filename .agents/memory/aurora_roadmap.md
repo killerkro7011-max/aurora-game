@@ -132,6 +132,9 @@
   - Boss arenas = isometric
 - [ ] Controls shift naturally with perspective
 - [ ] Zone type maps to perspective automatically, player can override
+- [ ] **Vesper as a playable companion character** — her own class, backstory, stat build, and
+      agenda. Grows alongside the player's character. Designed together with Marion when 2D begins.
+      Not a guide NPC — a real companion with opinions, her own story, and combat role.
 
 ### Special Modes (Future)
 - [ ] **Children's Mode**
@@ -162,3 +165,4 @@
 - Educational mode potential: school distribution channel, teacher-assigned worlds
 - Children's mode opens Aurora to family market
 - All systems must support the 10-200 stat scale (E through A tiers)
+- Vesper companion character is a Phase 3 priority — to be designed together with Marion
