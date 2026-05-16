@@ -582,27 +582,32 @@ function skillOutcome(r) {
 // ---- AI Core ----
 async function callAI(system, user, maxTokens) {
   maxTokens = maxTokens || 600;
-  // Route through backend proxy to avoid CORS issues
-  var res = await fetch('https://api.base44.com/api/apps/6a003b64ed572e57af35b196/functions/aiProxy', {
+  // Call OpenAI directly from the browser
+  var res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + state.apiKey
+    },
     body: JSON.stringify({
-      apiKey: state.apiKey,
-      system: system,
-      user: user,
-      maxTokens: maxTokens,
-      model: 'gpt-4o-mini'
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      max_tokens: maxTokens,
+      temperature: 0.85
     })
   });
   if (!res.ok) {
     var errData = await res.json();
-    var msg = (errData.error) || ('HTTP ' + res.status);
-    console.error('callAI proxy failed:', res.status, msg);
+    var msg = (errData && errData.error && errData.error.message) || ('HTTP ' + res.status);
+    console.error('callAI failed:', res.status, msg);
     throw new Error(msg);
   }
   var data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.result;
+  if (data.error) throw new Error(data.error.message || 'OpenAI error');
+  return data.choices[0].message.content.trim();
 }
 
 // ---- Rolling Campaign Memory ----
