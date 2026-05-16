@@ -820,6 +820,11 @@ async function startGame() {
   state.actionCount = 0; state.turnCount = 0; state.chapters = [];
   state.showJournal = false; state.showStats = false; state.showInventory = false; state.showShop = false;
   state.deathScreen = false; state.lootToast = null;
+  // ── EQUINOX GRIEF TRACKER ────────────────────────────────────────────────
+  state.griefScore = 0;          // accumulates per session
+  state.equinoxStrikes = state.equinoxStrikes || 0; // persists across sessions
+  state.equinoxActive = false;   // is the Equal Pact dome currently active?
+  state.equinoxCooldown = 0;     // turns before next check
   if (!state.gold) state.gold = 10;
   // Init crafting skills from class
   if (state.currentChar && !state.currentChar.craftingSkills) {
@@ -860,6 +865,95 @@ function checkDesperationIntent(text) {
   return false;
 }
 
+// ── EQUINOX SYSTEM ──────────────────────────────────────────────────────────
+var GRIEF_TRIGGERS = [
+  { pattern: /kill|murder|slaughter|destroy|burn|massacre|annihilate/i, score: 3 },
+  { pattern: /exploit|cheat|hack|break the game|bypass|god mode|infinite/i, score: 5 },
+  { pattern: /grief|troll|ruin|sabotage|harass/i, score: 4 },
+  { pattern: /enslave|dominate|crush everyone|rule all|subjugate/i, score: 2 },
+  { pattern: /blow up|detonate|nuke|wipe out/i, score: 3 }
+];
+
+function checkGriefScore(text) {
+  if (state.equinoxCooldown > 0) { state.equinoxCooldown--; return; }
+  var added = 0;
+  GRIEF_TRIGGERS.forEach(function(t){ if(t.pattern.test(text)) added += t.score; });
+  if (added > 0) {
+    state.griefScore = (state.griefScore || 0) + added;
+    // Decay over time — good behaviour slowly reduces score
+    if (state.turnCount > 0 && state.turnCount % 5 === 0) state.griefScore = Math.max(0, state.griefScore - 1);
+  }
+  // Strike thresholds: 15 = strike 1, 30 = strike 2, 50 = strike 3
+  var thresholds = [15, 30, 50];
+  var nextStrike = state.equinoxStrikes || 0;
+  if (nextStrike < 3 && state.griefScore >= thresholds[nextStrike]) {
+    state.equinoxStrikes = nextStrike + 1;
+    state.griefScore = 0; // reset score after trigger
+    state.equinoxCooldown = 20; // 20 turn cooldown before next check
+    triggerEquinoxEvent(nextStrike + 1);
+  }
+}
+
+async function triggerEquinoxEvent(strike) {
+  state.equinoxActive = true;
+  state.loading = true;
+  render();
+
+  var strikeContext = {
+    1: 'This is Strike 1. Equinox appears with quiet authority — no threats, no anger. He simply arrives, places a hand on their shoulder, and the Equal Pact dome activates. He makes clear, calmly, that the planet noticed. He gives one warning before departing. The dome dissolves after he leaves.',
+    2: 'This is Strike 2. Equinox returns — this time the surrounding region begins to destabilize as he approaches. The sky darkens. The ground trembles slightly beneath them. He is still calm, still quiet, but his presence is heavier now. The planet is paying full attention. He warns that the next time, he will not be the one who comes.',
+    3: 'This is Strike 3. Equinox does not speak. He arrives, places his hand on their shoulder, and holds the Equal Pact dome for longer this time. When it dissolves, their character finds themselves completely alone — NPCs have fled, structures have crumbled, their region has been geologically reset. A massive crater exists where their influence was strongest. The planet corrected. Equinox is already gone.'
+  };
+
+  var charName = state.currentChar ? state.currentChar.name : 'the player';
+  var worldName = state.currentWorld ? state.currentWorld.name : 'this world';
+  var loc = state.currentChar ? (state.currentChar.current_location || worldName) : worldName;
+
+  var equinoxPrompt = 'EQUINOX EVENT — STRIKE ' + strike + '. '
+    + 'The player character "' + charName + '" has been causing significant disruption to the world of "' + worldName + '". '
+    + 'The planet Aurora is sentient — it just sent its corrector. '
+    + 'Equinox is an Asurian: a being created by reality itself whose body IS his soul — a fixed point that cannot be easily touched or destroyed. He is an Explorer/Enforcer with 30 in all stats but two abilities: Equal Pact (projects his soul\'s absolute neutrality in a dome up to 3 miles, stripping divine or inherent advantages from targets — inside the dome, gods become mortal, exploiters lose their advantages, all hierarchy is suspended) and Jack of All Trades (competent at everything, specialist in nothing). '
+    + 'His name is Equinox. He does not announce himself. He does not threaten. He simply appears — no matter where the player is, even mid-air — and places a hand on their shoulder. That is when the dome activates. '
+    + 'The player is currently at: ' + loc + '. '
+    + strikeContext[strike] + ' '
+    + 'Write this as a cinematic narrator event — vivid, calm, inevitable. 3-4 paragraphs. Make it feel like the universe itself noticed them.';
+
+  try {
+    var text = await callAI(
+      'You are a cinematic RPG narrator. This is a special lore event — write it with gravitas and restraint. No melodrama. Quiet inevitability.',
+      equinoxPrompt, 500
+    );
+    state.messages.push({ role: 'narrator', text: text, id: Date.now(), equinox: true });
+    addToMemory('narrator', '[EQUINOX EVENT Strike ' + strike + '] ' + text.slice(0, 100));
+    state.keyEvents.push({ turn: state.turnCount, text: 'Equinox arrived. Strike ' + strike + '.' });
+    if (strike === 3) {
+      // Wipe region — inject a follow-up
+      setTimeout(async function() {
+        var wipeText = await callAI(
+          'You are a cinematic RPG narrator.',
+          'Describe the aftermath: the player\'s region in ' + worldName + ' has been geologically reset by the planet. A massive crater exists where their influence was. The world continues without them as if they were never there. 2 paragraphs.', 300
+        );
+        state.messages.push({ role: 'narrator', text: wipeText, id: Date.now()+1, equinox: true });
+        state.loading = false; render(); scrollToBottom();
+      }, 3000);
+      return;
+    }
+  } catch(e) {
+    // Fallback
+    var fallbacks = {
+      1: 'The air changes before you see him. Something ancient shifts its attention — and then a hand rests on your shoulder. You were flying. Now he is simply there, standing beside you on nothing at all. He does not speak immediately. The dome settles around you both like a held breath. When he finally looks at you, his eyes carry no malice. Only recognition. "The planet noticed," he says quietly. "Consider this a courtesy."',
+      2: 'The ground remembers before you do. Something deep beneath the world shifts, and the sky above your region dims — not from clouds, but from attention. He is already there when you turn. The hand on your shoulder is lighter than you expected for something so absolute. Around you, the horizon trembles. "I told you," Equinox says. Nothing more.',
+      3: 'He does not say anything this time. The hand on your shoulder. The dome. The long silence inside it where your advantages used to live. When he removes his hand and walks away, he does not look back. The world does the rest.'
+    };
+    state.messages.push({ role: 'narrator', text: fallbacks[strike], id: Date.now(), equinox: true });
+    state.keyEvents.push({ turn: state.turnCount, text: 'Equinox arrived. Strike ' + strike + '.' });
+  }
+  state.equinoxActive = false;
+  state.loading = false;
+  render();
+  scrollToBottom();
+}
+
 async function sendMessage(text) {
   if (!text.trim() || state.loading) return;
 
@@ -896,6 +990,9 @@ async function sendMessage(text) {
   state.input = '';
   state.messages.push({ role:'player', text: rawText, id: Date.now() });
   addToMemory('player', text.trim());
+  // ── EQUINOX GRIEF CHECK ───────────────────────────────────────────────────
+  checkGriefScore(rawText);
+  if (state.equinoxActive) return; // Equinox event is handling this turn
   state.loading = true;
   render();
 
@@ -3712,6 +3809,12 @@ function renderPlay() {
       return '<div style="display:flex;justify-content:flex-end;margin:6px 0"><div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);border-radius:16px;border-top-right-radius:3px;padding:10px 16px;max-width:70%;font-size:0.875rem;'+wrapStyle+'">'+playerHtml+'</div></div>';
     }
     if(msg.role==='narrator') {
+      if(msg.equinox){
+        return '<div style="background:linear-gradient(135deg,rgba(8,4,20,0.98),rgba(25,8,45,0.98));border:1px solid rgba(109,40,217,0.7);border-left:4px solid #7c3aed;box-shadow:0 0 40px rgba(109,40,217,0.25);border-radius:14px;padding:22px 24px;margin:14px 0">'
+          +'<div style="font-size:0.62rem;color:#a78bfa;text-transform:uppercase;letter-spacing:0.14em;font-weight:800;margin-bottom:12px">⚖ EQUINOX EVENT</div>'
+          +'<p style="font-size:0.88rem;line-height:1.8;color:#ede9fe;white-space:pre-line;margin:0">'+esc(msg.text)+'</p>'
+          +'</div>';
+      }
       var msgId = 'msg_' + Math.random().toString(36).slice(2,8);
       return '<div style="background:linear-gradient(135deg,#111827,rgba(88,28,135,0.15));border:1px solid rgba(88,28,135,0.3);border-radius:16px;border-top-left-radius:3px;padding:18px;margin:10px 0;box-shadow:0 4px 20px rgba(0,0,0,0.3);position:relative" class="narrator-msg">'+
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
