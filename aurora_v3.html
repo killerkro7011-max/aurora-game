@@ -825,6 +825,10 @@ async function startGame() {
   state.equinoxStrikes = state.equinoxStrikes || 0; // persists across sessions
   state.equinoxActive = false;   // is the Equal Pact dome currently active?
   state.equinoxCooldown = 0;     // turns before next check
+  // ── ASURIAN WANDERER SYSTEM ───────────────────────────────────────────────
+  state.asurian = null;          // active Asurian encounter { name, phase, watchingTurns }
+  state.asuriansFound = state.asuriansFound || 0; // total ever found (persists)
+  state.asuriansNextCheck = Math.floor(Math.random() * 30) + 20; // turns until first possible spawn
   if (!state.gold) state.gold = 10;
   // Init crafting skills from class
   if (state.currentChar && !state.currentChar.craftingSkills) {
@@ -863,6 +867,138 @@ function checkDesperationIntent(text) {
   if (hasDesperation && hasMagic) return true;
   if (lower.includes('create a spell') || lower.includes('invent a spell') || lower.includes('develop a spell')) return true;
   return false;
+}
+
+// ── ASURIAN WANDERER SYSTEM ─────────────────────────────────────────────────
+var ASURIAN_NAMES = [
+  'Vael','Sorn','Ithis','Quel','Maren','Dusk','Sable','Thresh','Nox','Lyren',
+  'Caer','Voss','Ember','Thal','Rime','Ashe','Zhen','Orin','Cael','Drev'
+];
+
+var ASURIAN_CURIOSITIES = [
+  'the nature of mortal fear',
+  'why gods need worship to feel real',
+  'what silence sounds like at the edge of the world',
+  'the way mortals name things they cannot understand',
+  'whether choice exists inside a fixed point',
+  'the colour of grief in a world with no death',
+  'how someone becomes a god and if they notice when it happens',
+  'what remains of a person after the story forgets them'
+];
+
+function trySpawnAsurian() {
+  if (state.asurian) return;                         // already one active
+  if (state.equinoxActive) return;                   // during Equinox event
+  if (state.turnCount < state.asuriansNextCheck) return; // too early
+  if (state.griefScore > 10) return;                 // griefers dont get encounters
+  if (state.inCombat) return;                        // mid-fight
+  // Base chance: 3% per explore turn, scales slightly with world danger
+  var dangerBonus = state.currentWorld && state.currentWorld.danger_level === 'extreme' ? 0.04 : 0;
+  var chance = 0.03 + dangerBonus;
+  if (Math.random() > chance) return;
+  // Spawn
+  var name = ASURIAN_NAMES[Math.floor(Math.random() * ASURIAN_NAMES.length)];
+  var curiosity = ASURIAN_CURIOSITIES[Math.floor(Math.random() * ASURIAN_CURIOSITIES.length)];
+  state.asurian = { name: name, curiosity: curiosity, phase: 'watching', watchingTurns: 0, rewardGiven: false };
+  state.asuriansNextCheck = state.turnCount + 40 + Math.floor(Math.random() * 20); // next possible in 40-60 turns
+  narrateAsurian('watching');
+}
+
+async function narrateAsurian(phase) {
+  var a = state.asurian;
+  if (!a) return;
+  var c = state.currentChar;
+  var w = state.currentWorld;
+  var loc = c ? (c.current_location || (w ? w.name : 'the Wilds')) : 'the Wilds';
+
+  var prompts = {
+    watching: 'ASURIAN ENCOUNTER — WATCHING PHASE. An Asurian named "' + a.name + '" has noticed the player character "' + (c ? c.name : 'the player') + '" in ' + loc + '. Asurians are beings created by reality itself — wanderers who live in the most dangerous parts of the Wilds, naturally curious about everything. They are not hostile. They observe. Describe in 2 short paragraphs: first, a subtle wrongness — a shadow that holds still too long, a sound at the edge of range, something the player might notice or might dismiss. Do not name the Asurian yet. Do not make it obvious. Plant the seed. End with a question the player will want to answer by exploring further.',
+    approaching: 'ASURIAN ENCOUNTER — APPROACH PHASE. The Asurian "' + a.name + '" has been watching "' + (c ? c.name : 'the player') + '" for a while and has decided they are interesting. Asurians approach only when genuinely curious — they are particularly fascinated by "' + a.curiosity + '". Describe in 2 paragraphs: the Asurian stepping out of whatever they were hiding in or behind, no weapons, no threat, just calm presence. They introduce themselves simply by name only. They ask a single, strange, deeply personal question about the player character — something connected to their curiosity about "' + a.curiosity + '". Make the question feel like it sees through the player in a way that should be impossible.',
+    reward: 'ASURIAN ENCOUNTER — GIFT PHASE. The Asurian "' + a.name + '" has decided to give "' + (c ? c.name : 'the player') + '" something. Asurian gifts cannot be bought, crafted, looted, or earned through quests — they are given once, to one person, because the Asurian saw something in them. Describe in 2 paragraphs: the Asurian producing the gift (either an item or teaching a skill) and explaining in a single quiet sentence why this specific thing for this specific person. Then they leave — they walk back into the Wilds without ceremony. Make it feel significant without being dramatic. The gift should feel EARNED, not given.'
+  };
+
+  var sys = 'You are a cinematic RPG narrator. This is a rare, once-in-a-world encounter. Write with restraint — quiet wonder, not spectacle.';
+  try {
+    var text = await callAI(sys, prompts[phase], 400);
+    state.messages.push({ role: 'narrator', text: text, id: Date.now(), asurian: true });
+    addToMemory('narrator', '[ASURIAN ' + phase.toUpperCase() + ' — ' + a.name + '] ' + text.slice(0, 80));
+    if (phase === 'watching') state.keyEvents.push({ turn: state.turnCount, text: 'Something is watching from the Wilds...' });
+    if (phase === 'approaching') state.keyEvents.push({ turn: state.turnCount, text: 'The Asurian ' + a.name + ' made contact.' });
+  } catch(e) {
+    var fallbacks = {
+      watching: 'Something in the Wilds is very still. Not the stillness of hiding — the stillness of a thing that has never needed to hide. You might dismiss it as a trick of light. You might not.',
+      approaching: 'They step out from the shadow of a stone that should not have concealed them. No weapons. No introduction beyond a name: "' + a.name + '." Then they ask you something you have never thought about but somehow already know the answer to.',
+      reward: '"' + a.name + '" reaches into nothing in particular and produces what they have decided you need. They name it without ceremony. Then they walk back into the Wilds, and the space they occupied closes behind them like a door.'
+    };
+    state.messages.push({ role: 'narrator', text: fallbacks[phase], id: Date.now(), asurian: true });
+  }
+  render(); scrollToBottom();
+}
+
+async function giveAsuriansReward() {
+  var a = state.asurian;
+  var c = state.currentChar;
+  var w = state.currentWorld;
+  if (!a || a.rewardGiven) return;
+  a.rewardGiven = true;
+  state.asuriansFound++;
+
+  // Generate a unique reward via AI
+  var sys = 'You are a loot generator for a narrative RPG. Return ONLY valid JSON.';
+  var rewardType = Math.random() < 0.5 ? 'item' : 'skill';
+  var prompt = '';
+
+  if (rewardType === 'item') {
+    prompt = 'Generate ONE unique Asurian gift item for character "' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'an adventurer') + '" in world "' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')' : 'unknown') + '". This item CANNOT exist anywhere else in the game. It reflects something true about the character. Return ONLY: {"name":string,"rarity":"legendary","type":"weapon|armor|tool|misc","effect":"unique, powerful, thematic effect — 1 sentence","value":0,"asurian":true,"givenBy":"' + a.name + '"}';
+  } else {
+    prompt = 'Generate ONE unique Asurian-taught skill for character "' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'an adventurer') + '". This skill CANNOT be learned anywhere else. It reflects something the Asurian saw in the character. Return ONLY: {"name":string,"rarity":"legendary","type":"skill","effect":"what this skill allows the character to do — 1 sentence, make it feel like it unlocks something essential","value":0,"asurian":true,"givenBy":"' + a.name + '"}';
+  }
+
+  try {
+    var raw = await callAI(sys, prompt, 250);
+    var cleaned = raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim();
+    var s = cleaned.indexOf('{'), e = cleaned.lastIndexOf('}');
+    if (s !== -1 && e !== -1) cleaned = cleaned.slice(s, e+1);
+    var reward = JSON.parse(cleaned);
+    if (rewardType === 'item') {
+      addItemToInventory(reward);
+      state.lootToast = { text: '✦ ' + a.name + ' leaves you with something rare.', items: [reward] };
+      setTimeout(function(){ state.lootToast = null; render(); }, 6000);
+    } else {
+      // Add as a special skill to character
+      if (c) {
+        if (!c.asuriangifts) c.asuriangifts = [];
+        c.asuriangifts.push(reward);
+        state.messages.push({ role: 'system', text: '✦ Asurian Skill Learned: ' + reward.name + ' — ' + reward.effect + ' (Given by ' + a.name + ')', id: Date.now() });
+      }
+    }
+  } catch(e) {
+    // Fallback legendary item
+    var fallback = { name: 'Echo of ' + a.name, qty: 1, rarity: 'legendary', type: 'misc', effect: 'Carries the memory of an Asurian. Its purpose reveals itself when needed most.', value: 0, asurian: true, givenBy: a.name };
+    addItemToInventory(fallback);
+    state.lootToast = { text: '✦ ' + a.name + ' leaves you with something rare.', items: [fallback] };
+    setTimeout(function(){ state.lootToast = null; render(); }, 6000);
+  }
+  await narrateAsurian('reward');
+  state.asurian = null; // encounter complete
+  render();
+}
+
+function advanceAsurianEncounter() {
+  var a = state.asurian;
+  if (!a || a.rewardGiven) return;
+  if (a.phase === 'watching') {
+    a.watchingTurns++;
+    // After 3-5 turns of exploring without aggression, Asurian approaches
+    if (a.watchingTurns >= 3 + Math.floor(Math.random() * 3)) {
+      a.phase = 'approaching';
+      narrateAsurian('approaching');
+    }
+  } else if (a.phase === 'approaching') {
+    // After player engages (next turn after approach), give reward
+    a.phase = 'reward';
+    giveAsuriansReward();
+  }
 }
 
 // ── EQUINOX SYSTEM ──────────────────────────────────────────────────────────
@@ -1051,6 +1187,15 @@ async function sendMessage(text) {
   var lootActions = { explore:true, hunt:true, forage:true, study:true };
   if (lootActions[detectedAction] && Math.random() < 0.2) {
     generateLoot(detectedAction + ' in ' + (state.currentChar ? (state.currentChar.current_location || state.currentWorld.name) : state.currentWorld.name));
+  }
+  // ── ASURIAN WANDERER CHECKS ───────────────────────────────────────────────
+  // Only trigger during exploration, not combat or grief
+  if (!state.inCombat && state.griefScore < 10) {
+    if (state.asurian) {
+      advanceAsurianEncounter();
+    } else if (lootActions[detectedAction] || detectedAction === 'explore') {
+      trySpawnAsurian();
+    }
   }
   state.loading = false;
   render();
@@ -3809,6 +3954,12 @@ function renderPlay() {
       return '<div style="display:flex;justify-content:flex-end;margin:6px 0"><div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.25);border-radius:16px;border-top-right-radius:3px;padding:10px 16px;max-width:70%;font-size:0.875rem;'+wrapStyle+'">'+playerHtml+'</div></div>';
     }
     if(msg.role==='narrator') {
+      if(msg.asurian){
+        return '<div style="background:linear-gradient(135deg,rgba(10,8,2,0.98),rgba(40,30,5,0.98));border:1px solid rgba(217,165,32,0.6);border-left:4px solid #d4a017;box-shadow:0 0 40px rgba(200,150,20,0.2);border-radius:14px;padding:22px 24px;margin:14px 0">'
+          +'<div style="font-size:0.62rem;color:#f0c040;text-transform:uppercase;letter-spacing:0.14em;font-weight:800;margin-bottom:12px">✦ ASURIAN ENCOUNTER</div>'
+          +'<p style="font-size:0.88rem;line-height:1.8;color:#fef9e7;white-space:pre-line;margin:0">'+esc(msg.text)+'</p>'
+          +'</div>';
+      }
       if(msg.equinox){
         return '<div style="background:linear-gradient(135deg,rgba(8,4,20,0.98),rgba(25,8,45,0.98));border:1px solid rgba(109,40,217,0.7);border-left:4px solid #7c3aed;box-shadow:0 0 40px rgba(109,40,217,0.25);border-radius:14px;padding:22px 24px;margin:14px 0">'
           +'<div style="font-size:0.62rem;color:#a78bfa;text-transform:uppercase;letter-spacing:0.14em;font-weight:800;margin-bottom:12px">⚖ EQUINOX EVENT</div>'
