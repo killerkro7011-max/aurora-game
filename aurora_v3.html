@@ -133,12 +133,13 @@ function devTesterWorld() {
 }
 
 function freshWorld() {
-  return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative',
+  return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', races:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative',
     gods_religion:'', tone_themes:'', economy_resources:'', secrets_mysteries:'', languages_cultures:'', world_feel:'' };
 }
 function freshChar(worldId, worldName) {
   return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'',
     progression_mode: 'journey',
+    starting_scenario: '',
     stats:{ STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, SMY:50 },
     mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10, SMY:10 },
     mastery_xp:{ STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 }
@@ -830,7 +831,8 @@ async function startGame() {
   render();
   try {
     var charAbilities = state.currentChar.abilities ? state.currentChar.abilities.slice(0,100) : '';
-    var openingPrompt = 'BEGIN THE STORY. Opening scene for ' + state.currentChar.name + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') in ' + state.currentWorld.name + '. ' + 'Setting: ' + state.currentWorld.setting + ', ' + state.currentWorld.climate + ' climate, ' + state.currentWorld.danger_level + ' danger. ' + (state.currentWorld.lore ? 'Lore: ' + state.currentWorld.lore.slice(0,200) + '. ' : '') + (state.currentChar.backstory ? 'BACKSTORY — this MUST shape the opening scene: ' + state.currentChar.backstory.slice(0,250) + '. ' : '') + (charAbilities ? 'Abilities: ' + charAbilities + '. ' : '') + 'Open in a scene that directly references the character\'s backstory and what drove them here. ' + 'Hook in the first sentence. 2-3 punchy paragraphs. End with something the player must decide right now.'
+    var scenarioHint = (state.currentChar.starting_scenario && state.currentChar.starting_scenario.trim()) ? 'OPENING SCENARIO (use this exactly as the starting scene, expand it with vivid sensory detail and immediate stakes): "' + state.currentChar.starting_scenario.trim() + '". ' : '';
+    var openingPrompt = 'BEGIN THE STORY. Opening scene for ' + state.currentChar.name + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') in ' + state.currentWorld.name + '. ' + 'Setting: ' + state.currentWorld.setting + ', ' + state.currentWorld.climate + ' climate, ' + state.currentWorld.danger_level + ' danger. ' + (state.currentWorld.lore ? 'Lore: ' + state.currentWorld.lore.slice(0,200) + '. ' : '') + (state.currentChar.backstory ? 'BACKSTORY — this MUST shape the opening scene: ' + state.currentChar.backstory.slice(0,250) + '. ' : '') + (charAbilities ? 'Abilities: ' + charAbilities + '. ' : '') + scenarioHint + (!scenarioHint ? 'Open in a scene that directly references the character\'s backstory and what drove them here. ' : '') + 'Hook in the first sentence. 2-3 punchy paragraphs. End with something the player must decide right now.'
     var text = await callAI('You are a cinematic RPG narrator. Be vivid, immediate, atmospheric.', openingPrompt, 500);
     state.messages.push({ role:'narrator', text:text, id: Date.now() });
     addToMemory('narrator', text);
@@ -1327,8 +1329,8 @@ var CLASS_ICONS = {Warrior:'⚔️',Mage:'🔮',Rogue:'🗡️',Ranger:'🏹',Pa
 var ALIGNMENTS = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
 var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Culture & Faith','Tone & Secrets','Experience Mode'];
 var WORLD_ICONS = ['🌍','🌿','⚔️','📜','🛐','🌑','✨'];
-var CHAR_STEPS = ['Identity','Backstory','Stats','Abilities','Alignment'];
-var CHAR_ICONS = ['👤','📜','📊','⚡','⚖️'];
+var CHAR_STEPS = ['Identity','Backstory','Stats','Abilities','Alignment','Your Entry'];
+var CHAR_ICONS = ['👤','📜','📊','⚡','⚖️','🌅'];
 
 var COMBAT_ACTIONS = [
   {label:'Slash',icon:'⚔️',type:'combat'},{label:'Dodge & Strike',icon:'🌀',type:'combat'},
@@ -3248,9 +3250,59 @@ function renderCreateWorld() {
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Society & Power</h2><p style="color:#9ca3af;margin-bottom:24px">Who lives here and how dangerous is it?</p>'
       +sliderHtml('Danger Level',DANGER_LEVELS,DANGER_ICONS,'danger_level',w)
       +sliderHtml('Population Density',POP_DENSITIES,POP_ICONS,'population_density',w)
-      +'<div style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Factions & Groups</label>'+aiAssistBtn('factions','Generate')+'</div>'
-      +'<textarea id="world-factions" placeholder="Who holds power? e.g. The Iron Council, rebel guilds..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(w.factions)+'</textarea>'
+      +(function(){
+        var factions = [];
+        try { factions = w.factions ? JSON.parse(w.factions) : []; } catch(e) {
+          // legacy string — convert to single card
+          if(w.factions && w.factions.trim()) factions = [{ name: 'Factions', goal: w.factions, leader:'', territory:'', allies:'', enemies:'' }];
+        }
+        var html = '<div style="margin-top:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">⚔️ Factions & Groups</label><button id="btn-add-faction" style="background:rgba(147,51,234,0.2);border:1px solid rgba(147,51,234,0.4);color:#c084fc;padding:5px 12px;border-radius:8px;font-size:0.75rem;cursor:pointer">+ Add Faction</button></div>';
+        if(factions.length===0){
+          html += '<div style="border:1px dashed rgba(255,255,255,0.1);border-radius:12px;padding:24px;text-align:center;color:#6b7280;font-size:0.85rem">No factions yet. Click <strong style=\'color:#c084fc\'>+ Add Faction</strong> to define who holds power.</div>';
+        }
+        factions.forEach(function(faction, fi){
+          html += '<div class="faction-card" data-fi="'+fi+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(147,51,234,0.25);border-radius:14px;padding:16px;margin-bottom:12px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+            +'<input class="faction-name" data-fi="'+fi+'" value="'+esc(faction.name||'')+'" placeholder="Faction name..." style="background:none;border:none;color:white;font-size:1rem;font-weight:700;outline:none;flex:1" />'
+            +'<button class="btn-remove-faction" data-fi="'+fi+'" style="background:rgba(239,68,68,0.15);border:none;color:#f87171;padding:3px 10px;border-radius:8px;font-size:0.7rem;cursor:pointer">✕ Remove</button>'
+            +'</div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Goal / Agenda</div><textarea class="faction-goal" data-fi="'+fi+'" rows="2" placeholder="What do they want?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none;resize:none">'+esc(faction.goal||'')+'</textarea></div>'
+            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Leader</div><input class="faction-leader" data-fi="'+fi+'" value="'+esc(faction.leader||'')+'" placeholder="Who leads them?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Territory</div><input class="faction-territory" data-fi="'+fi+'" value="'+esc(faction.territory||'')+'" placeholder="Where do they operate?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Allies / Enemies</div><input class="faction-relations" data-fi="'+fi+'" value="'+esc(faction.allies||faction.enemies||'')+'" placeholder="Friends & rivals..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'</div></div>';
+        });
+        html += '</div>';
+        return html;
+      })()
       +(state.aiSuggestionField==='factions'?suggestionBox():'')+'</div>';
+      +(function(){
+        var races = [];
+        try { races = w.races ? JSON.parse(w.races) : []; } catch(e) {
+          if(w.races && w.races.trim()) races = [{ name: w.races, description:'', traits:'', culture:'', lifespan:'', playable:true }];
+        }
+        var html = '<div style="margin-top:20px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">🌿 Races & Peoples</label><button id="btn-add-race" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;padding:5px 12px;border-radius:8px;font-size:0.75rem;cursor:pointer">+ Add Race</button></div>';
+        if(races.length===0){
+          html += '<div style="border:1px dashed rgba(255,255,255,0.1);border-radius:12px;padding:24px;text-align:center;color:#6b7280;font-size:0.85rem">No races yet. Click <strong style=\'color:#6ee7b7\'>+ Add Race</strong> to define who inhabits your world.</div>';
+        }
+        races.forEach(function(race, ri){
+          html += '<div class="race-card" data-ri="'+ri+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(16,185,129,0.2);border-radius:14px;padding:16px;margin-bottom:12px">'
+            +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+            +'<input class="race-name" data-ri="'+ri+'" value="'+esc(race.name||'')+'" placeholder="Race name..." style="background:none;border:none;color:white;font-size:1rem;font-weight:700;outline:none;flex:1" />'
+            +'<label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:#9ca3af;cursor:pointer;margin-right:10px"><input type="checkbox" class="race-playable" data-ri="'+ri+'" '+(race.playable?'checked':'')+' style="accent-color:#6ee7b7" /> Playable</label>'
+            +'<button class="btn-remove-race" data-ri="'+ri+'" style="background:rgba(239,68,68,0.15);border:none;color:#f87171;padding:3px 10px;border-radius:8px;font-size:0.7rem;cursor:pointer">✕</button>'
+            +'</div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Description</div><textarea class="race-desc" data-ri="'+ri+'" rows="2" placeholder="Appearance, bearing, how they move..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none;resize:none">'+esc(race.description||'')+'</textarea></div>'
+            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Traits & Abilities</div><input class="race-traits" data-ri="'+ri+'" value="'+esc(race.traits||'')+'" placeholder="Night vision, resilience..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Culture</div><input class="race-culture" data-ri="'+ri+'" value="'+esc(race.culture||'')+'" placeholder="Values, traditions, lifestyle..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Lifespan</div><input class="race-lifespan" data-ri="'+ri+'" value="'+esc(race.lifespan||'')+'" placeholder="e.g. 80 years, immortal..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'</div></div>';
+        });
+        html += '</div>';
+        return html;
+      })()
   } else if(step===3){
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Lore & Landmarks</h2><p style="color:#9ca3af;margin-bottom:24px">The history and geography that shapes everything.</p>'
       +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">World Lore</label>'+aiAssistBtn('lore','Generate')+'</div>'
@@ -3339,6 +3391,35 @@ function attachCreateWorldEvents() {
     render();
   });});
   document.querySelectorAll('.ai-assist-btn').forEach(function(b){b.addEventListener('click',function(){collectWorldStep();aiAssistWorld(b.dataset.assistType);});});
+
+  // Add faction
+  var baf=document.getElementById('btn-add-faction');
+  if(baf) baf.addEventListener('click',function(){
+    collectWorldStep();
+    var factions=[];try{factions=state.draftWorld.factions?JSON.parse(state.draftWorld.factions):[];}catch(e){}
+    factions.push({name:'New Faction',goal:'',leader:'',territory:'',allies:'',enemies:''});
+    state.draftWorld.factions=JSON.stringify(factions);render();
+  });
+  // Remove faction
+  document.querySelectorAll('.btn-remove-faction').forEach(function(b){b.addEventListener('click',function(){
+    collectWorldStep();
+    var fi=parseInt(b.dataset.fi);var factions=[];try{factions=state.draftWorld.factions?JSON.parse(state.draftWorld.factions):[];}catch(e){}
+    factions.splice(fi,1);state.draftWorld.factions=JSON.stringify(factions);render();
+  });});
+  // Add race
+  var bar=document.getElementById('btn-add-race');
+  if(bar) bar.addEventListener('click',function(){
+    collectWorldStep();
+    var races=[];try{races=state.draftWorld.races?JSON.parse(state.draftWorld.races):[];}catch(e){}
+    races.push({name:'New Race',description:'',traits:'',culture:'',lifespan:'',playable:true});
+    state.draftWorld.races=JSON.stringify(races);render();
+  });
+  // Remove race
+  document.querySelectorAll('.btn-remove-race').forEach(function(b){b.addEventListener('click',function(){
+    collectWorldStep();
+    var ri=parseInt(b.dataset.ri);var races=[];try{races=state.draftWorld.races?JSON.parse(state.draftWorld.races):[];}catch(e){}
+    races.splice(ri,1);state.draftWorld.races=JSON.stringify(races);render();
+  });});
   // Expand My Idea button
   var bRandom = document.getElementById('btn-random-world');
   if(bRandom) bRandom.addEventListener('click', function(){ collectWorldStep(); generateRandomWorld(); });
@@ -3375,7 +3456,30 @@ function collectWorldStep() {
   var n=document.getElementById('world-name');if(n)state.draftWorld.name=n.value;
   var eu=document.getElementById('world-echo-url');if(eu)state.draftWorld.echo_narrative_story_url=eu.value;
   var d=document.getElementById('world-desc');if(d)state.draftWorld.description=d.value;
-  var f=document.getElementById('world-factions');if(f)state.draftWorld.factions=f.value;
+  // Collect faction cards (JSON) or fall back to textarea
+  var factionCards=document.querySelectorAll('.faction-card');
+  if(factionCards.length>0){
+    var fArr=[];
+    factionCards.forEach(function(card){
+      var nm=card.querySelector('.faction-name'),gl=card.querySelector('.faction-goal'),
+          ld=card.querySelector('.faction-leader'),tr=card.querySelector('.faction-territory'),
+          rl=card.querySelector('.faction-relations');
+      fArr.push({name:nm?nm.value:'',goal:gl?gl.value:'',leader:ld?ld.value:'',territory:tr?tr.value:'',allies:rl?rl.value:'',enemies:''});
+    });
+    state.draftWorld.factions=JSON.stringify(fArr);
+  } else { var f=document.getElementById('world-factions');if(f)state.draftWorld.factions=f.value; }
+  // Collect race cards (JSON)
+  var raceCards=document.querySelectorAll('.race-card');
+  if(raceCards.length>0){
+    var rArr=[];
+    raceCards.forEach(function(card){
+      var nm=card.querySelector('.race-name'),ds=card.querySelector('.race-desc'),
+          tr=card.querySelector('.race-traits'),cu=card.querySelector('.race-culture'),
+          li=card.querySelector('.race-lifespan'),pl=card.querySelector('.race-playable');
+      rArr.push({name:nm?nm.value:'',description:ds?ds.value:'',traits:tr?tr.value:'',culture:cu?cu.value:'',lifespan:li?li.value:'',playable:pl?pl.checked:false});
+    });
+    state.draftWorld.races=JSON.stringify(rArr);
+  }
   var l=document.getElementById('world-lore');if(l)state.draftWorld.lore=l.value;
   var lm=document.getElementById('world-landmarks');if(lm)state.draftWorld.landmarks=lm.value;
   var r=document.getElementById('world-rules');if(r)state.draftWorld.rules_of_nature=r.value;
@@ -3477,6 +3581,23 @@ function renderCreateChar() {
     +'</button>'
     +'</div></div>';
   }
+  if(step===5){
+    var examples = [
+      'I wake up in a strange inn with no memory of how I got here...',
+      'Standing at the city gates, wanted poster in hand, looking for a way in...',
+      'The explosion behind me lights up the night sky as I run...',
+      'I have been hired to deliver a package I was told never to open...'
+    ];
+    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">🌅 Your Entry</h2>'
+      +'<p style="color:#9ca3af;margin-bottom:6px">How does your story begin? Set the scene — where you are, what just happened, what you\'re about to do. This becomes your opening moment in the world.</p>'
+      +'<p style="color:#6b7280;font-size:0.78rem;margin-bottom:20px">Leave blank and the narrator will open your story naturally.</p>'
+      +'<textarea id="char-scenario" rows="6" placeholder="Describe your opening scene..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.4);border-radius:12px;padding:14px 16px;color:white;font-size:0.9rem;outline:none;line-height:1.6;resize:vertical">'+esc(c.starting_scenario||'')+'</textarea>'
+      +'<div style="margin-top:16px"><div style="font-size:0.75rem;color:#6b7280;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Need inspiration?</div>'
+      +'<div style="display:grid;gap:8px">'
+      +examples.map(function(ex){return '<button class="scenario-example-btn" data-ex="'+esc(ex)+'" style="text-align:left;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 14px;color:#9ca3af;font-size:0.8rem;cursor:pointer;transition:all 0.2s;line-height:1.5">✦ '+esc(ex)+'</button>';}).join('')
+      +'</div></div>';
+  }
+
   var isLast=step===CHAR_STEPS.length-1;
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)"><div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px"><button id="btn-back-char" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'+stepBarHtml(CHAR_STEPS,CHAR_ICONS,step)+'</div><div style="max-width:40rem;margin:0 auto;padding:40px 24px">'+body+'<div style="display:flex;justify-content:space-between;margin-top:40px">'+(step>0?'<button id="btn-char-prev" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')+(!isLast?'<button id="btn-char-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>':'<button id="btn-save-char" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Enter the World</button>')+vesperChatHtml('char')+'</div></div></div>';
 }
@@ -3487,6 +3608,7 @@ function attachCreateCharEvents() {
   if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();});
   if(bs) bs.addEventListener('click',function(){collectCharStep();applyMasteryForLevel(state.draftChar);var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
   document.querySelectorAll('.preset-btn').forEach(function(b){b.addEventListener('click',function(){var cls=b.dataset.cls,p=CLASS_PRESETS[cls];state.draftChar.class=cls;if(p){var st={};['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){st[s]=p[s]||50;});state.draftChar.stats=st;}render();});});
+  document.querySelectorAll('.scenario-example-btn').forEach(function(b){b.addEventListener('click',function(){var sc=document.getElementById('char-scenario');if(sc){sc.value=b.dataset.ex;state.draftChar.starting_scenario=b.dataset.ex;}});});
   document.querySelectorAll('.align-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.alignment=b.dataset.align;render();});});
   document.querySelectorAll('.prog-btn').forEach(function(b){b.addEventListener('click',function(){state.draftChar.progression_mode=b.dataset.mode;render();});});
   var lvS=document.getElementById('char-level'),lvD=document.getElementById('level-display');
@@ -3512,6 +3634,7 @@ function collectCharStep() {
   var l=document.getElementById('char-location');if(l)state.draftChar.current_location=l.value;
   var a=document.getElementById('char-abilities');if(a)state.draftChar.abilities=a.value;
   var iv=document.getElementById('char-inventory');if(iv)state.draftChar.inventory=iv.value;
+  var sc=document.getElementById('char-scenario');if(sc)state.draftChar.starting_scenario=sc.value;
   var lv=document.getElementById('char-level');if(lv)state.draftChar.level=parseInt(lv.value)||1;
   document.querySelectorAll('.stat-slider').forEach(function(sl){if(!state.draftChar.stats)state.draftChar.stats={};state.draftChar.stats[sl.dataset.stat]=parseInt(sl.value)||10;});
   document.querySelectorAll('.mastery-slider').forEach(function(sl){if(!state.draftChar.mastery)state.draftChar.mastery={};state.draftChar.mastery[sl.dataset.stat]=parseInt(sl.value)||10;});
