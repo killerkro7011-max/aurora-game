@@ -35,7 +35,32 @@ let state = {
   apiKey: localStorage.getItem(KEY_STORE) || '',
   agentImportNotice: null,
   agentImportError: null,
-  worlds: JSON.parse(localStorage.getItem('aurora_worlds') || '[]'),
+  worlds: (function(){
+    var stored = JSON.parse(localStorage.getItem('aurora_worlds') || '[]');
+    var hasCanon = stored.some(function(w){ return w.world_type === 'Canon'; });
+    if (!hasCanon) {
+      stored.push({
+        id: 'aurora-canon-001',
+        world_type: 'Canon',
+        name: 'Aurora',
+        status: 'Active',
+        experience_mode: 'Narrative',
+        magic_level: 'High',
+        technology_level: 'Medieval',
+        danger_level: 'High',
+        population_density: 'Varied',
+        setting: 'A planetary-scale wilderness of extreme geographic diversity — vast primordial forests, floating island continents, underground seas, sheer cliff worlds, and skies thick with drifting landmasses. Civilizations exist at every altitude, from ground-level mortal kingdoms to floating island empires accessible only to beings who can ascend.',
+        climate: 'Wildly variable by region. The forest floor is humid and dim, light filtered through a canopy so dense it functions as a second sky. Floating islands have their own independent weather systems. Some regions are frozen, others volcanic, others perpetually storm-locked.',
+        description: 'A vast, incomprehensible planetary colossus that rejected the gods who tried to settle it — forcing them to descend as mortal vessels instead. Aurora is not a world that was made. It simply is, and has been, long before anything divine arrived. Every landscape it contains defies expectation: forests of trees ranging from ten feet to the size of castles, floating islands from town-sized to continent-scale, tundras, underground oceans, and biomes that shift without warning. The planet does not react to the gods. It does not care. That indifference is the first thing every descending god learns.',
+        lore: 'The gods were once a mortal civilization that ascended collectively — an entire race that burned their home world down in the process. They searched the void for a new world and found Aurora: a planet so incomprehensibly massive they could not navigate around it. They stopped. They stayed.\n\nAurora rejected their true forms on contact. So the gods did the only thing left: they experimented. First they created the Lesser Beings — humans, dwarves, elves, and hundreds of other mortal races. Then the Superior Beings: demigods, angels, spirits — more ambitious creations with their own agendas. Then came the true cost. To descend personally, a god must tear a piece of their own soul free and compress it into a mortal vessel of their own design. Every vessel is unique. These are the Divine Races — gods wearing bodies they designed themselves.\n\nThe vessel is permanent. A god cannot reclaim the soul fragment once given. If the vessel dies, that piece of soul is lost forever — the god above grows weaker. Enough deaths and the diminishment becomes corruption. They gave the condition a name: Demon. Not a creature. A state.\n\nNow millions of divine vessels walk among the lesser beings, living mortal lives. A god of war runs a bakery. A god of storms tends a lighthouse alone. They have no cosmic duties here. They are simply alive, in small bodies, on an incomprehensible planet, trying to figure out what that means.',
+        factions: 'The Descended — gods living as mortals among the lesser beings, scattered across every civilization. No unified agenda.\n\nThe Demonkind — gods too far gone, haunting the deep wilds. Not organized. Not evil by design. Just broken in ways that make them dangerous.\n\nThe Superior Courts — angels, spirits, and demigods who formed their own power structures on the larger floating islands.\n\nThe Lesser Kingdoms — human empires, dwarven holds, elven courts, and hundreds of other mortal civilizations built entirely without knowledge of their divine origins.\n\nThe Asurians — rare beings created by reality itself. Fixed-point souls that must actively interact with the world to persist. They appear when divine power exceeds what the world will tolerate.',
+        landmarks: 'The Threshold — the boundary layer where descending gods first materialize, marked by ancient divine script left by every god who ever arrived.\n\nThe Stillroom — a library rumored to predate the gods entirely. Location unknown. Said to contain records of what Aurora was before anything divine touched it.\n\nThe Demonspine — a mountain range in the deep wilds where the oldest demons retreated. Lesser beings do not go there.\n\nThe Ascending Shelf — a series of massive cliff faces stretching upward for miles, each level home to a different civilization tier.\n\nThe Hollow Continent — a floating landmass the size of a small country that is entirely hollow inside, containing an interior ecosystem that has never seen direct sky.',
+        rules_of_nature: '1. The planet rejects divine true-forms. Gods cannot exist here in their natural state — only soul-fragments housed in mortal vessels.\n2. Soul fragments are permanent sacrifices. Once torn free and placed in a vessel, they cannot be reclaimed.\n3. Death diminishes the god above. Enough deaths corrupt rather than diminish — the path to demonhood.\n4. The world has no obligation to the gods. Aurora operates entirely independent of divine presence or will.\n5. Altitude is civilization. The higher you can exist, the more power and isolation you command.\n6. The Asurian correction activates when divine power disrupts the world balance. It cannot be bargained with.'
+      });
+      localStorage.setItem('aurora_worlds', JSON.stringify(stored));
+    }
+    return stored;
+  })(),
   characters: JSON.parse(localStorage.getItem('aurora_chars') || '[]'),
   currentWorld: null,
   currentChar: null,
@@ -2996,6 +3021,7 @@ function render() {
   if (state.screen==='importWorld') { root.innerHTML = renderImportWorld(); attachImportWorldEvents(); return; }
   if (state.screen==='cobuildReview') { root.innerHTML = renderCobuildReview(); attachCobuildReviewEvents(); return; }
   if (state.screen==='worldDetail') { root.innerHTML = renderWorldDetail(); attachWorldDetailEvents(); return; }
+  if (state.screen==='editCanonWorld') { root.innerHTML = renderEditCanonWorld(); attachEditCanonWorldEvents(); return; }
   if (state.screen==='createChar') { root.innerHTML = renderCreateChar(); attachCreateCharEvents(); return; }
   if (state.screen==='play') { root.innerHTML = renderPlay(); attachPlayEvents(); return; }
 }
@@ -3324,6 +3350,7 @@ function renderWorlds() {
   // Private worlds (player-created)
   var myWorlds = state.worlds.filter(function(w){ return !w.world_type || w.world_type==='private'; });
   var eventWorlds = state.worlds.filter(function(w){ return w.world_type==='event'; });
+  var canonWorlds = state.worlds.filter(function(w){ return w.world_type==='Canon'; });
 
   var myCards = myWorlds.length===0
     ? '<div style="grid-column:span 2;text-align:center;padding:5rem 0"><div style="font-size:3.5rem;margin-bottom:16px">🌌</div><h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">No worlds yet</h2><p style="color:#9ca3af;margin-bottom:28px">Every god starts somewhere.</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button id="btn-cobuild-first" style="display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(236,72,153,0.2));border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:12px 22px;border-radius:12px;font-size:0.95rem;font-weight:700;cursor:pointer"><span>✦</span>Build With Vesper</button><button id="btn-first-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 28px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">Create Manually →</button></div></div>'
@@ -3391,15 +3418,18 @@ function renderWorlds() {
     +'<div style="display:flex;gap:8px;margin-bottom:28px">'
     +'<button id="tab-mine" style="'+tabBtnStyle('mine')+'">🌍 My Worlds</button>'
     +'<button id="tab-event" style="'+tabBtnStyle('event')+'">⚡ Aurora Continents</button>'
+    +'<button id="tab-canon" style="'+tabBtnStyle('canon')+'">🌑 Canon World</button>'
     +'</div>'
     +(activeTab==='mine'
       ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px">'+myCards+'</div>'
+      : activeTab==='canon'
+      ? renderCanonWorldTab(canonWorlds)
       : '<div>'
         +'<div style="background:linear-gradient(135deg,rgba(234,179,8,0.08),rgba(251,146,60,0.04));border:1px solid rgba(234,179,8,0.15);border-radius:16px;padding:20px 24px;margin-bottom:24px;display:flex;gap:16px;align-items:flex-start">'
         +'<div style="font-size:2rem">🌐</div>'
         +'<div><h3 style="font-size:1rem;font-weight:700;color:#fbbf24;margin-bottom:4px">The Shared Universe</h3>'
         +'<p style="color:#9ca3af;font-size:0.85rem;line-height:1.5">These are the official continents of Aurora — a shared world curated by the Aurora team. Enter one to live inside canon events alongside other players. Your choices here become history.</p>'
-        +'<a href="https://echo-narrative-flow.base44.app" target="_blank" style="display:inline-flex;align-items:center;gap:6px;color:#f59e0b;font-size:0.8rem;margin-top:10px;text-decoration:none">📖 Read the EchoNarrative chronicles ↗</a>'
+        +'<a href="https://echo-narrative-flow.base44.app" target="_blank" style="display:inline-flex;align-items:center;gap=6px;color:#f59e0b;font-size:0.8rem;margin-top:10px;text-decoration:none">📖 Read the EchoNarrative chronicles ↗</a>'
         +'</div></div>'
         +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">'+eventCards+'</div>'
         +'</div>'
@@ -3426,11 +3456,134 @@ function attachWorldsEvents() {
   function goCobuild(){ state.draftWorld=freshWorld(); cobuildStart(); }
   if(bCobuild) bCobuild.addEventListener('click', goCobuild);
   if(bCobuildFirst) bCobuildFirst.addEventListener('click', goCobuild);
-  var tabMine=document.getElementById('tab-mine'),tabEvent=document.getElementById('tab-event');
+  var tabMine=document.getElementById('tab-mine'),tabEvent=document.getElementById('tab-event'),tabCanon=document.getElementById('tab-canon');
   if(tabMine) tabMine.addEventListener('click',function(){state.worldsTab='mine';render();});
   if(tabEvent) tabEvent.addEventListener('click',function(){state.worldsTab='event';render();});
+  if(tabCanon) tabCanon.addEventListener('click',function(){state.worldsTab='canon';render();});
+  // Canon world edit
+  var bEditCanon = document.getElementById('btn-edit-canon');
+  if(bEditCanon) bEditCanon.addEventListener('click', function(){ state.screen='editCanonWorld'; state.editCanonDraft=Object.assign({},state.worlds.find(function(w){return w.world_type==='Canon';})||{}); render(); });
   document.querySelectorAll('.world-card').forEach(function(el){
     el.addEventListener('click',function(){state.currentWorld=state.worlds[parseInt(el.dataset.i)];state.screen='worldDetail';render();});
+  });
+}
+
+function renderCanonWorldTab(canonWorlds) {
+  if (!canonWorlds || canonWorlds.length === 0) {
+    return '<div style="text-align:center;padding:5rem 0"><div style="font-size:3.5rem;margin-bottom:16px">🌑</div><h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">No canon world yet</h2><p style="color:#9ca3af">The official Aurora world has not been defined yet.</p></div>';
+  }
+  return canonWorlds.map(function(w) {
+    var idx = state.worlds.indexOf(w);
+    var fields = [
+      { label: 'Setting', val: w.setting },
+      { label: 'Climate', val: w.climate },
+      { label: 'Magic', val: w.magic_level },
+      { label: 'Danger', val: w.danger_level },
+      { label: 'Technology', val: w.technology_level },
+      { label: 'Population', val: w.population_density }
+    ];
+    var fieldGrid = fields.filter(function(f){ return f.val; }).map(function(f){
+      return '<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:10px 12px">'
+        +'<div style="color:#6b7280;font-size:0.72rem;margin-bottom:3px">'+f.label+'</div>'
+        +'<div style="color:#e5e7eb;font-weight:600;font-size:0.85rem">'+esc(f.val)+'</div>'
+        +'</div>';
+    }).join('');
+
+    var sections = [
+      { label: '📖 Lore', val: w.lore },
+      { label: '⚔️ Factions', val: w.factions },
+      { label: '🗺️ Landmarks', val: w.landmarks },
+      { label: '⚖️ Rules of Nature', val: w.rules_of_nature }
+    ];
+    var sectionBlocks = sections.filter(function(s){ return s.val; }).map(function(s){
+      return '<div style="margin-bottom:20px">'
+        +'<div style="font-size:0.9rem;font-weight:700;color:#c084fc;margin-bottom:8px">'+s.label+'</div>'
+        +'<div style="color:#d1d5db;font-size:0.875rem;line-height:1.8;white-space:pre-line">'+esc(s.val)+'</div>'
+        +'</div>';
+    }).join('');
+
+    return '<div style="background:linear-gradient(135deg,rgba(99,40,180,0.12),rgba(30,12,60,0.3));border:1px solid rgba(147,51,234,0.3);border-radius:20px;padding:32px;margin-bottom:24px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:gap">'
+      +'<div>'
+      +'<div style="font-size:0.72rem;color:#9333ea;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px">🌑 Canon World</div>'
+      +'<h2 style="font-size:1.8rem;font-weight:800;margin-bottom:8px">'+esc(w.name)+'</h2>'
+      +(w.description ? '<p style="color:#9ca3af;font-size:0.9rem;line-height:1.6;max-width:680px">'+esc(w.description)+'</p>' : '')
+      +'</div>'
+      +'<div style="display:flex;gap:8px;flex-shrink:0;margin-top:4px">'
+      +'<button id="btn-edit-canon" data-i="'+idx+'" style="background:rgba(147,51,234,0.2);border:1px solid rgba(147,51,234,0.5);color:#c084fc;padding:8px 16px;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.85rem">✏️ Edit World</button>'
+      +'<button class="world-card" data-i="'+idx+'" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:10px;font-weight:600;cursor:pointer;font-size:0.85rem">▶ Enter World</button>'
+      +'</div></div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:28px">'+fieldGrid+'</div>'
+      +'<div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:24px">'+sectionBlocks+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function renderEditCanonWorld() {
+  var w = state.editCanonDraft || {};
+  var field = function(label, key, type, rows) {
+    var val = (w[key] || '');
+    if (type === 'select') return '';
+    var inputStyle = 'width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;color:white;font-size:0.9rem;resize:vertical;font-family:inherit;box-sizing:border-box';
+    var input = rows
+      ? '<textarea data-key="'+key+'" rows="'+rows+'" style="'+inputStyle+'">'+esc(val)+'</textarea>'
+      : '<input type="text" data-key="'+key+'" value="'+esc(val)+'" style="'+inputStyle+'">';
+    return '<div style="margin-bottom:18px">'
+      +'<label style="display:block;font-size:0.8rem;font-weight:600;color:#a78bfa;margin-bottom:6px">'+label+'</label>'
+      +input
+      +'</div>';
+  };
+  var selectField = function(label, key, opts) {
+    var val = w[key] || '';
+    var options = opts.map(function(o){ return '<option value="'+o+'"'+(val===o?' selected':'')+'>'+o+'</option>'; }).join('');
+    return '<div style="margin-bottom:18px">'
+      +'<label style="display:block;font-size:0.8rem;font-weight:600;color:#a78bfa;margin-bottom:6px">'+label+'</label>'
+      +'<select data-key="'+key+'" style="width:100%;background:#1a0a2e;border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;color:white;font-size:0.9rem">'+options+'</select>'
+      +'</div>';
+  };
+
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
+    +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.4);padding:20px 24px;display:flex;align-items:center;justify-content:space-between">'
+    +'<div><h1 style="font-size:1.3rem;font-weight:700">✏️ Edit Canon World</h1><p style="color:#9ca3af;font-size:0.85rem">Changes apply to all players who enter Aurora.</p></div>'
+    +'<div style="display:flex;gap:10px">'
+    +'<button id="btn-cancel-edit-canon" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:10px;cursor:pointer">Cancel</button>'
+    +'<button id="btn-save-canon" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 20px;border-radius:10px;font-weight:700;cursor:pointer">💾 Save Changes</button>'
+    +'</div></div>'
+    +'<div style="max-width:760px;margin:0 auto;padding:32px 24px">'
+    +field('World Name', 'name', 'text')
+    +field('Description', 'description', 'text', 3)
+    +field('Setting / Geography', 'setting', 'text', 3)
+    +field('Climate', 'climate', 'text', 2)
+    +selectField('Magic Level', 'magic_level', ['None','Low','Medium','High','Unlimited'])
+    +selectField('Technology Level', 'technology_level', ['Stone Age','Ancient','Medieval','Renaissance','Industrial','Modern','Futuristic','Post-Apocalyptic'])
+    +selectField('Danger Level', 'danger_level', ['Safe','Low','Medium','High','Extreme'])
+    +selectField('Population Density', 'population_density', ['Empty','Sparse','Varied','Moderate','Dense'])
+    +field('Lore', 'lore', 'text', 10)
+    +field('Factions', 'factions', 'text', 8)
+    +field('Landmarks', 'landmarks', 'text', 6)
+    +field('Rules of Nature', 'rules_of_nature', 'text', 6)
+    +'</div></div>';
+}
+
+function attachEditCanonWorldEvents() {
+  var btnCancel = document.getElementById('btn-cancel-edit-canon');
+  if (btnCancel) btnCancel.addEventListener('click', function(){ state.screen='worlds'; state.worldsTab='canon'; render(); });
+
+  var btnSave = document.getElementById('btn-save-canon');
+  if (btnSave) btnSave.addEventListener('click', function(){
+    // Collect all field values from inputs/textareas/selects
+    document.querySelectorAll('[data-key]').forEach(function(el){
+      state.editCanonDraft[el.dataset.key] = el.value;
+    });
+    // Find the world record and update it in local state
+    var w = state.worlds.find(function(w){ return w.world_type==='Canon'; });
+    if (!w) { alert('Canon world not found.'); return; }
+    var idx = state.worlds.indexOf(w);
+    if (idx !== -1) state.worlds[idx] = Object.assign({}, w, state.editCanonDraft);
+    save();
+    state.screen = 'worlds';
+    state.worldsTab = 'canon';
+    render();
   });
 }
 
