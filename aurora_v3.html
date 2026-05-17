@@ -3330,7 +3330,7 @@ Return ONLY a valid JSON object. No markdown fences, no extra text.`;
     // Validate magic/tech/danger levels
     var levels = ['None','Low','Medium','High','Extreme'];
     var densities = ['Sparse','Moderate','Dense','Crowded'];
-    state.draftWorld = {
+    state.draftWorld = Object.assign(freshWorld(), {
       name: json.name || query,
       description: json.description || '',
       setting: json.setting || '',
@@ -3343,7 +3343,25 @@ Return ONLY a valid JSON object. No markdown fences, no extra text.`;
       factions: formatImportField(json.factions),
       landmarks: formatImportField(json.landmarks),
       rules_of_nature: formatImportField(json.rules_of_nature),
-    };
+      gods_religion: json.gods_religion || '',
+      languages_cultures: json.languages_cultures || '',
+      economy_resources: json.economy_resources || '',
+      secrets_mysteries: formatImportField(json.secrets_mysteries),
+      tone_themes: json.tone_themes || '',
+      world_feel: json.world_feel || '',
+      historical_events: json.historical_events || '',
+      current_conflicts: json.current_conflicts || '',
+      magic_law: json.magic_law || '',
+      death_law: json.death_law || '',
+      reality_law: json.reality_law || '',
+      power_law: json.power_law || '',
+      power_system_type: json.power_system_type || '',
+      genre_tone: json.genre_tone || '',
+      world_scale: json.world_scale || '',
+      core_theme: json.core_theme || json.core_themes || '',
+      world_type: 'known',
+      experience_mode: 'Narrative',
+    });
     state.importing = false;
     state.screen = 'createWorld';
     state.worldStep = 0;
