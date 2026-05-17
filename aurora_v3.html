@@ -4163,6 +4163,16 @@ function attachCreateWorldEvents() {
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
   document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
   document.querySelectorAll('.psys-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.power_system_type=b.dataset.psys;render();});});
+  document.querySelectorAll('.genre-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.genre_tone=b.dataset.genre;render();});});
+  document.querySelectorAll('.scale-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.world_scale=b.dataset.scale;render();});});
+  document.querySelectorAll('.theme-btn').forEach(function(b){b.addEventListener('click',function(){
+    var themes=state.draftWorld.core_themes||'';
+    var arr=themes?themes.split(',').map(function(x){return x.trim();}).filter(Boolean):[];
+    var t=b.dataset.theme; var idx=arr.indexOf(t);
+    if(idx===-1){arr.push(t);}else{arr.splice(idx,1);}
+    state.draftWorld.core_themes=arr.join(', ');
+    render();
+  });});
   document.querySelectorAll('.tone-btn').forEach(function(b){b.addEventListener('click',function(){
     collectWorldStep();
     var t=b.dataset.tone; var tones=state.draftWorld.tone_themes||'';
