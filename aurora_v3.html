@@ -66,7 +66,7 @@ let state = {
   currentWorld: null,
   currentChar: null,
   worldStep: 0, charStep: 0,
-  draftWorld: {}, draftChar: {},
+  draftWorld: null, draftChar: {},
   // Play state
   messages: [],
   recentMemory: [],        // last ~10 raw exchanges
@@ -1522,7 +1522,7 @@ async function fetchStepTip() {
   var w=state.draftWorld; if(!w.name)return;
   state.aiTip=null; render();
   var ctx='World: "'+w.name+'", Setting: '+w.setting+', Climate: '+w.climate+', Magic: '+w.magic_level+', Tech: '+w.technology_level+', Danger: '+w.danger_level+(w.description?', Desc: '+w.description:'')+(w.lore?', Lore: '+w.lore:'')+(w.factions?', Factions: '+w.factions:'');
-  var hints=['Tip for naming/describing this world based on its setting.','How do the climate and magic level interact in interesting ways?','What faction conflict would make this world compelling?','Any lore inconsistency or surprising historical event that fits?','What makes Narrative Mode work best for this type of world?'];
+  var hints=['Tip for naming this world — keep the description empty for now, it will be generated at the end.','How do the climate and magic level interact in interesting ways?','What faction conflict would make this world compelling?','Any lore inconsistency or surprising historical event that fits?','What makes Narrative Mode work best for this type of world?','What power system nuances stand out?','What cultural tensions arise from these factions and races?','What mysteries lurk at the edges of known history?','How do the laws of magic and death shape daily life?','What kind of power scaling story emerges from this system?','Write a vivid 3-4 sentence description of this world that captures its tone, scale, defining features, and atmosphere. Base it on everything the player built: the setting, lore, factions, magic system, death law, and world feel. Make it sound like the back of a book — immersive, evocative, specific.'];
   try { var tip=await callAI('World-building advisor. Be specific and brief. Max 2 sentences.','Context: '+ctx+'\n\n'+hints[state.worldStep],100); state.aiTip=tip; } catch(e){state.aiTip=null;}
   render();
 }
@@ -3880,9 +3880,6 @@ function renderCreateWorld() {
     content='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><h2 style="font-size:1.5rem;font-weight:700">Name Your World</h2><div style="display:flex;gap:8px">'+randomWorldBtn()+expandWorldBtn()+'</div></div>'
       +'<p style="color:#9ca3af;margin-bottom:24px">What will you call this place?</p>'
       +'<input id="world-name" type="text" placeholder="e.g. Aethoria, The Shattered Realms..." value="'+esc(w.name)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:12px;outline:none" />'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Description</label>'+aiAssistBtn('description','Generate')+'</div>'
-      +'<textarea id="world-desc" placeholder="Describe your world briefly..." rows="3" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;margin-bottom:4px">'+esc(w.description)+'</textarea>'
-      +((state.aiSuggestionField==='description'||state.aiSuggestionField==='full')?suggestionBox():'')
       +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:16px">Setting</h3>'+selectGridHtml(SETTINGS,SETTING_ICONS,'setting',w)
       +'<h3 style="font-weight:600;margin-bottom:8px;margin-top:20px">World Type</h3>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
@@ -4121,7 +4118,19 @@ function renderCreateWorld() {
     // ── WORLD CONTRACT ────────────────────────────────────────────
     var contractText = w.world_contract_text || '';
     var stabilityColor = w.world_stability >= 80 ? '#4ade80' : w.world_stability >= 50 ? '#fbbf24' : '#f87171';
-    content='<div style="text-align:center;margin-bottom:24px">'
+    content=''
+      // ── WORLD SUMMARY ─────────────────────────────────────────
+      +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:20px;margin-bottom:24px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+      +'<h3 style="font-size:1rem;font-weight:700;color:#e2e8f0">🌐 World Summary</h3>'
+      +aiAssistBtn('description','Auto-Generate')
+      +'</div>'
+      +'<p style="font-size:0.8rem;color:#6b7280;margin-bottom:10px">A short description of your world based on everything you just built. Hit Auto-Generate or write your own.</p>'
+      +'<textarea id="world-desc" placeholder="Click Auto-Generate to summarize your world, or write your own description..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;resize:vertical">'+esc(w.description)+'</textarea>'
+      +((state.aiSuggestionField==='description'||state.aiSuggestionField==='full')?suggestionBox():'')
+      +'</div>'
+      // ── WORLD CONTRACT ─────────────────────────────────────────
+      +'<div style="text-align:center;margin-bottom:24px">'
       +'<div style="font-size:3rem;margin-bottom:8px">📜</div>'
       +'<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">World Contract</h2>'
       +'<p style="color:#9ca3af;font-size:0.9rem">This is the binding agreement between you and your world. Once signed, the narrator is permanently bound by these rules.</p>'
