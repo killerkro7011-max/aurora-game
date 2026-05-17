@@ -92,6 +92,9 @@ let state = {
   saveToast: false,
   lootToast: null,
   deathScreen: false,
+  levelUpScreen: null,
+  permadeath: false,
+  gameOverReason: null,
   deathDropped: [],
   deathGoldLost: 0,
   summarizing: false,
@@ -139,6 +142,8 @@ let state = {
   cobuildDone: false,    // true when world is fully built and ready to review
   // Always initialize draftWorld so renderCreateWorld never crashes on undefined
   draftWorld: null,      // set to freshWorld() when entering world creator
+  showOnboarding: !localStorage.getItem('aurora_onboarded'),
+  onboardingStep: 0,
   draftChar: {},         // set when entering character creator
 };
 
@@ -367,20 +372,42 @@ function triggerDeath() {
   state.deathScreen = true;
   state.inCombat = false;
   state.enemy = null;
+  // Track death count per character
+  if (state.currentChar) {
+    state.currentChar.deathCount = (state.currentChar.deathCount || 0) + 1;
+  }
+  var survivalMode = (state.currentWorld && state.currentWorld.survival_mode) || 'standard';
+  var deathCount = (state.currentChar && state.currentChar.deathCount) || 1;
+  // Scale penalties by mode
+  var dropRate   = survivalMode === 'story' ? 0 : survivalMode === 'ironman' || survivalMode === 'nightmare' ? 0.6 : 0.3;
+  var goldRate   = survivalMode === 'story' ? 0 : survivalMode === 'ironman' || survivalMode === 'nightmare' ? 0.5 : 0.25;
   var inv = getInventory();
-  var droppedCount = Math.floor(inv.length * 0.3);
+  var droppedCount = Math.floor(inv.length * dropRate);
   var dropped = [];
   for (var i = 0; i < droppedCount; i++) {
     if (inv.length === 0) break;
-    var idx = Math.floor(Math.random() * inv.length);
-    dropped.push(inv[idx].name);
-    inv.splice(idx, 1);
+    var ri = Math.floor(Math.random() * inv.length);
+    dropped.push(inv[ri].name);
+    inv.splice(ri, 1);
   }
   if (state.currentChar) state.currentChar.inventoryItems = inv;
-  var goldLost = Math.floor((state.gold||0) * 0.25);
+  var goldLost = Math.floor((state.gold||0) * goldRate);
   state.gold = Math.max(0, (state.gold||0) - goldLost);
   state.deathDropped = dropped;
   state.deathGoldLost = goldLost;
+  // Nightmare = instant game over
+  if (survivalMode === 'nightmare') {
+    state.deathScreen = false;
+    state.screen = 'worldDetail';
+    state.messages = [];
+    state.currentChar = null;
+    state.gameOverReason = 'nightmare';
+    save(); render(); return;
+  }
+  // Ironman = permadeath on 3rd death
+  if (survivalMode === 'ironman' && deathCount >= 3) {
+    state.permadeath = true;
+  }
   save();
   render();
 }
@@ -397,6 +424,53 @@ function respawn() {
   render();
   scrollToBottom();
 }
+
+// ── LEVEL UP ENGINE ──────────────────────────────────────────────────────────
+// XP thresholds per level (cumulative XP needed to reach each level)
+var XP_THRESHOLDS = [0,100,250,450,700,1050,1500,2100,2900,4000,5500];
+// After level 10 each level needs 2000 more XP
+function xpForLevel(lvl) {
+  if (lvl <= 10) return XP_THRESHOLDS[lvl] || 5500;
+  return 5500 + (lvl - 10) * 2000;
+}
+
+function checkLevelUp() {
+  if (!state.currentChar) return;
+  var c = state.currentChar;
+  var currentLevel = c.level || 1;
+  var nextLevel = currentLevel + 1;
+  var xpNeeded = xpForLevel(nextLevel);
+  if (c.experience >= xpNeeded) {
+    c.level = nextLevel;
+    // Update mastery ceilings based on new level
+    var newCeiling = nextLevel <= 10 ? 10 + (nextLevel-1)*10 :
+                     nextLevel <= 30 ? 40 + (nextLevel-11)*3 :
+                     nextLevel <= 60 ? 70 + (nextLevel-31)*1.5 :
+                     nextLevel <= 90 ? 110 + (nextLevel-61)*1.3 : 150;
+    newCeiling = Math.min(200, Math.floor(newCeiling));
+    c.mastery_ceiling = newCeiling;
+    // Restore HP to full on level up
+    state.charHP = Math.min(200, Math.floor((c.stats ? c.stats.CON : 50) * 0.8) + nextLevel * 5);
+    // Show level up overlay
+    state.levelUpScreen = {
+      level: nextLevel,
+      ceiling: newCeiling,
+      xpNeeded: xpForLevel(nextLevel + 1)
+    };
+    save();
+    render();
+    return true;
+  }
+  return false;
+}
+
+function awardXP(amount, reason) {
+  if (!state.currentChar) return;
+  state.currentChar.experience = (state.currentChar.experience || 0) + amount;
+  state.messages.push({ role:'system', text: '✨ +' + amount + ' XP' + (reason ? ' — ' + reason : ''), id: Date.now()+5 });
+  checkLevelUp();
+}
+
 
 
 // ── MASTERY ENGINE ──────────────────────────────────────────────────────────
@@ -1391,6 +1465,19 @@ async function sendMessage(text) {
     addToMemory('narrator', parsed.cleanText);
     state.turnCount++;
     state.actionCount++;
+    // ── NARRATIVE XP ─────────────────────────────────────────────────────────
+    // Award small XP every turn, more for significant moments
+    if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
+      var narrativeXP = 5 + Math.floor(Math.random() * 6); // 5-10 base
+      // Bonus XP for actions that push the story
+      if (parsed.cleanText && parsed.cleanText.length > 300) narrativeXP += 5; // rich scene
+      if (state.inCombat) narrativeXP += 3; // danger bonus
+      if (parsed.cleanText && /discover|reveal|secret|ancient|truth|hidden/i.test(parsed.cleanText)) narrativeXP += 8; // discovery bonus
+      if (parsed.cleanText && /level|power|grow|stronger|wiser|mastered/i.test(parsed.cleanText)) narrativeXP += 5; // growth moment
+      // Silent award every turn — no message spam, checkLevelUp handles display
+      state.currentChar.experience = (state.currentChar.experience || 0) + narrativeXP;
+      checkLevelUp();
+    }
 
     // Auto-save chapter every 8 actions
     if (state.actionCount % 8 === 0) saveChapter(parsed.cleanText);
@@ -1481,7 +1568,7 @@ async function doCombatAction(label, type, icon) {
       state.inCombat = false;
       var defeated = state.enemy ? state.enemy.name : 'enemy';
       state.enemy = null;
-      state.currentChar.experience += 50;
+      awardXP(50 + Math.floor((state.currentChar.level||1) * 8), 'Combat victory');
       var goldGain = Math.floor(Math.random() * 15) + 3;
       state.gold += goldGain;
       state.messages.push({ role:'system', text: '💰 +' + goldGain + ' gold', id: Date.now()+3 });
@@ -2578,17 +2665,57 @@ function renderShopPanel() {
 function renderDeathScreen() {
   var dropped = state.deathDropped || [];
   var goldLost = state.deathGoldLost || 0;
-  return '<div style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.95);display:flex;align-items:center;justify-content:center">'
-    +'<div style="max-width:400px;width:100%;padding:40px 32px;text-align:center">'
-    +'<div style="font-size:5rem;margin-bottom:16px;animation:pulse 2s infinite">💀</div>'
-    +'<h2 style="font-size:1.8rem;font-weight:800;color:#f87171;margin-bottom:8px">You Have Fallen</h2>'
-    +'<p style="color:#9ca3af;margin-bottom:24px;line-height:1.6">Death is not the end in ' + esc(state.currentWorld ? state.currentWorld.name : 'this world') + '. But it has a price.</p>'
+  var deathCount = (state.currentChar && state.currentChar.deathCount) || 1;
+  var survivalMode = (state.currentWorld && state.currentWorld.survival_mode) || 'standard';
+  var isIronman = survivalMode === 'ironman';
+  var livesLeft = isIronman ? Math.max(0, 3 - deathCount) : null;
+  var isPermadeath = state.permadeath;
+  var modeColors = { story:'#4ade80', standard:'#f87171', survival:'#f97316', ironman:'#ef4444', nightmare:'#7f1d1d' };
+  var modeLabel = { story:'Story', standard:'Standard', survival:'Survival', ironman:'Ironman', nightmare:'Nightmare' };
+  return '<div style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.97);display:flex;align-items:center;justify-content:center">'
+    +'<div style="max-width:420px;width:90%;padding:40px 32px;text-align:center">'
+    +(survivalMode !== 'standard' ? '<div style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:rgba(255,255,255,0.05);border:1px solid '+(modeColors[survivalMode]||'#f87171')+';color:'+(modeColors[survivalMode]||'#f87171')+';margin-bottom:16px">'+(modeLabel[survivalMode]||'Standard')+'</div>' : '')
+    +'<div style="font-size:5rem;margin-bottom:16px;animation:pulse 2s infinite">'+(isPermadeath?'💀':'🩸')+'</div>'
+    +'<h2 style="font-size:1.8rem;font-weight:800;color:#f87171;margin-bottom:8px">'+(isPermadeath?'Your Story Ends Here':'You Have Fallen')+'</h2>'
+    +(isIronman && !isPermadeath ? '<div style="font-size:0.85rem;color:#fbbf24;font-weight:600;margin-bottom:12px">⚠️ '+livesLeft+' '+(livesLeft===1?'life':'lives')+' remaining</div>' : '')
+    +(isPermadeath ? '<p style="color:#9ca3af;margin-bottom:24px;line-height:1.6">Three deaths. The world of '+esc(state.currentWorld?state.currentWorld.name:'this realm')+' remembers '+esc(state.currentChar?state.currentChar.name:'you')+' — but your journey is over.</p>'
+      : '<p style="color:#9ca3af;margin-bottom:24px;line-height:1.6">Death is not the end in '+esc(state.currentWorld?state.currentWorld.name:'this world')+'. But it has a price.</p>')
     +(dropped.length > 0 ? '<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:12px;margin-bottom:12px;font-size:0.8rem;color:#f87171"><strong>Lost items:</strong> '+esc(dropped.join(', '))+'</div>' : '')
     +(goldLost > 0 ? '<div style="background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.2);border-radius:12px;padding:10px;margin-bottom:20px;font-size:0.8rem;color:#facc15">💰 Lost <strong>'+goldLost+'g</strong></div>' : '')
-    +'<button id="btn-respawn" style="background:linear-gradient(to right,#7f1d1d,#991b1b);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🌅 Rise Again</button>'
-    +'<button id="btn-exit-death" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:10px 32px;border-radius:12px;font-size:0.875rem;cursor:pointer;width:100%">← Abandon & Exit</button>'
+    +(isPermadeath
+      ? '<button id="btn-exit-death" style="background:linear-gradient(to right,#7f1d1d,#991b1b);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">📖 View Your Legacy</button>'
+      : '<button id="btn-respawn" style="background:linear-gradient(to right,#7f1d1d,#991b1b);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">🌅 Rise Again</button>'
+        +'<button id="btn-exit-death" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:10px 32px;border-radius:12px;font-size:0.875rem;cursor:pointer;width:100%">← Abandon &amp; Exit</button>'
+    )
     +'</div></div>';
 }
+
+// ── LEVEL UP OVERLAY ─────────────────────────────────────────────────────────
+function renderLevelUpOverlay() {
+  if (!state.levelUpScreen) return '';
+  var lu = state.levelUpScreen;
+  var c = state.currentChar;
+  var levelLabel = lu.level <= 10 ? ['','Apprentice','Apprentice','Apprentice','Journeyman','Journeyman','Journeyman','Adept','Adept','Veteran','Veteran'][lu.level] || 'Veteran' :
+                   lu.level <= 30 ? 'Expert' :
+                   lu.level <= 60 ? 'Master' :
+                   lu.level <= 90 ? 'Grandmaster' : 'Legend';
+  return '<div style="position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.4s ease">'
+    +'<div style="max-width:420px;width:90%;padding:40px 32px;text-align:center;background:linear-gradient(135deg,rgba(147,51,234,0.15),rgba(236,72,153,0.1));border:1px solid rgba(147,51,234,0.4);border-radius:24px">'
+    +'<div style="font-size:4rem;margin-bottom:12px;animation:pulse 1s infinite">⚡</div>'
+    +'<div style="font-size:0.75rem;font-weight:700;letter-spacing:0.15em;color:#9333ea;text-transform:uppercase;margin-bottom:4px">Level Up</div>'
+    +'<h2 style="font-size:2.5rem;font-weight:900;color:white;margin-bottom:4px">Level ' + lu.level + '</h2>'
+    +'<div style="font-size:1rem;color:#c084fc;font-weight:600;margin-bottom:20px">' + esc(levelLabel) + '</div>'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:14px 16px;margin-bottom:16px;text-align:left">'
+    +'<div style="font-size:0.75rem;color:#6b7280;margin-bottom:8px;font-weight:600;letter-spacing:0.05em">WHAT CHANGED</div>'
+    +'<div style="font-size:0.85rem;color:#d1d5db;line-height:1.6">✦ Stat mastery ceiling raised to <strong style="color:#c084fc">' + lu.ceiling + '</strong><br>'
+    +'✦ HP restored to full<br>'
+    +'✦ Next level at <strong style="color:#60a5fa">' + lu.xpNeeded + ' XP</strong></div>'
+    +'</div>'
+    +'<p style="font-size:0.8rem;color:#6b7280;margin-bottom:20px">Your actions in ' + esc(state.currentWorld ? state.currentWorld.name : 'this world') + ' have made you stronger.</p>'
+    +'<button id="btn-levelup-continue" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%">Continue →</button>'
+    +'</div></div>';
+}
+
 
 // ── LOOT TOAST ────────────────────────────────────────────────────────────────
 function renderLootToast() {
@@ -3228,7 +3355,7 @@ function render() {
   var root = document.getElementById('root');
   if (!root) return;
   if (!state.apiKey) { root.innerHTML = renderKeyScreen(); attachKeyEvents(); return; }
-  if (state.screen==='home') { root.innerHTML = renderHome() + renderCobuildOverlay(); attachHomeEvents(); attachCobuildEvents(); return; }
+  if (state.screen==='home') { root.innerHTML = renderOnboarding() + renderHome() + renderCobuildOverlay(); attachHomeEvents(); attachCobuildEvents(); attachOnboardingEvents(); return; }
   if (state.screen==='agentImport') { root.innerHTML = renderAgentImport(); attachAgentImportEvents(); return; }
   if (state.screen==='worlds') { root.innerHTML = renderWorlds() + renderCobuildOverlay(); attachWorldsEvents(); attachCobuildEvents(); return; }
   if (state.screen==='createWorld') { root.innerHTML = renderCreateWorld() + renderCobuildOverlay(); attachCreateWorldEvents(); attachCobuildEvents(); return; }
@@ -3239,6 +3366,34 @@ function render() {
   if (state.screen==='createChar') { root.innerHTML = renderCreateChar(); attachCreateCharEvents(); return; }
   if (state.screen==='play') { root.innerHTML = renderPlay(); attachPlayEvents(); return; }
 }
+
+// ── ONBOARDING OVERLAY ───────────────────────────────────────────────────────
+function renderOnboarding() {
+  if (!state.showOnboarding) return '';
+  var step = state.onboardingStep || 0;
+  var steps = [
+    { icon:'🌍', title:'Build Your World', body:'Define the laws, factions, races, and tone of a world from scratch — or import a fictional universe you love. Every rule you set becomes a hard constraint the narrator must follow.' },
+    { icon:'⚔️', title:'Become Someone', body:'Create your character: choose an origin, a flaw, a power system, and abilities that grow through how you actually play — not just from leveling up. The world reacts to who you are.' },
+    { icon:'📖', title:'Live The Story', body:'Type freely. Fight, negotiate, craft, explore, rest. The AI narrates your world in real time. Level up, die, come back different. Your choices are permanent.' },
+  ];
+  var s = steps[step];
+  return '<div style="position:fixed;inset:0;z-index:600;background:rgba(0,0,0,0.96);display:flex;align-items:center;justify-content:center;padding:20px">'
+    +'<div style="max-width:440px;width:100%;padding:40px 32px;text-align:center;background:linear-gradient(135deg,rgba(147,51,234,0.1),rgba(30,30,60,0.95));border:1px solid rgba(147,51,234,0.3);border-radius:24px">'
+    +'<div style="font-size:0.7rem;color:#6b7280;letter-spacing:0.15em;text-transform:uppercase;margin-bottom:20px">'+(step+1)+' of '+steps.length+'</div>'
+    +'<div style="font-size:3.5rem;margin-bottom:16px">'+s.icon+'</div>'
+    +'<h2 style="font-size:1.6rem;font-weight:800;color:white;margin-bottom:12px">'+s.title+'</h2>'
+    +'<p style="color:#9ca3af;line-height:1.7;margin-bottom:32px;font-size:0.9rem">'+s.body+'</p>'
+    +'<div style="display:flex;justify-content:center;gap:8px;margin-bottom:24px">'
+    +steps.map(function(_,i){ return '<div style="width:8px;height:8px;border-radius:50%;background:'+(i===step?'#9333ea':'rgba(255,255,255,0.15)')+'"></div>'; }).join('')
+    +'</div>'
+    +(step < steps.length-1
+      ? '<button id="btn-onboard-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">Next →</button>'
+      : '<button id="btn-onboard-next" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:14px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;margin-bottom:10px">Enter Aurora →</button>'
+    )
+    +'<button id="btn-onboard-skip" style="background:none;border:none;color:#4b5563;font-size:0.8rem;cursor:pointer;width:100%">Skip intro</button>'
+    +'</div></div>';
+}
+
 
 function renderKeyScreen() {
   return '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(135deg,#0a0a1a,#1a0a2e)">'
@@ -3564,6 +3719,27 @@ function attachAgentImportEvents() {
     setTimeout(function(){ state.agentImportNotice = null; render(); }, 4000);
   });
 }
+
+function attachOnboardingEvents() {
+  var next = document.getElementById('btn-onboard-next');
+  var skip = document.getElementById('btn-onboard-skip');
+  function dismiss() {
+    state.showOnboarding = false;
+    localStorage.setItem('aurora_onboarded', '1');
+    render();
+  }
+  if (next) next.addEventListener('click', function() {
+    var steps = 3;
+    if ((state.onboardingStep || 0) < steps - 1) {
+      state.onboardingStep = (state.onboardingStep || 0) + 1;
+      render();
+    } else {
+      dismiss();
+    }
+  });
+  if (skip) skip.addEventListener('click', dismiss);
+}
+
 
 function attachHomeEvents() {
   var bp=document.getElementById('btn-play'),bc=document.getElementById('btn-create'),bk=document.getElementById('btn-key'),bi=document.getElementById('btn-import-world'),bu=document.getElementById('btn-universe'),ba=document.getElementById('btn-agent-import');
@@ -5170,7 +5346,7 @@ function renderPlay() {
     +'<div style="max-width:42rem;margin:0 auto">'
     +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:0.75rem;text-align:center;margin-bottom:10px">'
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Level</div><div style="color:#facc15;font-weight:700">'+c.level+'</div></div>'
-    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">XP</div><div style="color:#60a5fa;font-weight:700">'+c.experience+'</div></div>'
+    +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px;grid-column:span 2"><div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#9ca3af;margin-bottom:4px"><span>XP</span><span style="color:#60a5fa">'+c.experience+' / '+(typeof xpForLevel==="function"?xpForLevel((c.level||1)+1):"?")+'</span></div><div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px"><div style="background:linear-gradient(to right,#3b82f6,#8b5cf6);border-radius:4px;height:6px;width:'+(typeof xpForLevel==="function"?Math.min(100,Math.floor((c.experience-(xpForLevel(c.level||1)||0))/Math.max(1,(xpForLevel((c.level||1)+1))-(xpForLevel(c.level||1)||0))*100)):0)+'%;transition:width 0.5s ease"></div></div></div>'
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Class</div><div style="color:#c084fc;font-weight:700">'+esc(c.class)+'</div></div>'
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">NPCs</div><div style="color:#4ade80;font-weight:700">'+state.npcs.length+'</div></div>'
     +'</div>'
@@ -5192,7 +5368,7 @@ function renderPlay() {
 
   var mainStyle=(state.showJournal?'margin-right:320px;':'')+(state.showInventory&&!state.showJournal?'margin-right:320px;':state.showInventory&&state.showShop?'margin-right:640px;':state.showInventory?'margin-right:320px;':'');
 
-  return (state.devMode ? renderDevPanel() : '') + (state.deathScreen ? renderDeathScreen() : '')
+  return (state.devMode ? renderDevPanel() : '') + (state.levelUpScreen ? renderLevelUpOverlay() : '') + (state.deathScreen ? renderDeathScreen() : '')
     + renderLootToast()
     + (state.npcConvo ? renderNpcConvoModal() : '') + toast
     +(state.showCrafting ? renderCraftingPanel() : '')
@@ -5344,6 +5520,9 @@ function attachPlayEvents() {
   var rb=document.getElementById('btn-respawn'),ed=document.getElementById('btn-exit-death');
   if(rb) rb.addEventListener('click',function(){respawn();});
   if(ed) ed.addEventListener('click',function(){state.deathScreen=false;state.screen='worldDetail';render();});
+  // Level up overlay
+  var lu=document.getElementById('btn-levelup-continue');
+  if(lu) lu.addEventListener('click',function(){state.levelUpScreen=null;render();});
   // Inventory item actions
   document.querySelectorAll('.inv-equip-btn').forEach(function(b){ b.addEventListener('click',function(){ toggleEquip(parseInt(b.dataset.id)); render(); }); });
   document.querySelectorAll('.inv-use-btn').forEach(function(b){ b.addEventListener('click',function(){
