@@ -4804,6 +4804,139 @@ async function aiGenerateStorySeeds() {
   }
 }
 
+// ── AGENT INBOX ────────────────────────────────────────────────────────────────
+var INBOX_KEY = 'aurora_agent_inbox';
+
+// Called by external agents or scripts: window.auroraAgentImport({worlds:[...]})
+// agentImportWorld — used by paste JSON handler
+function agentImportWorld(json) {
+  try {
+    var w = normalizeImportedWorld(json);
+    var existing = state.worlds.findIndex(function(x){ return x.name === w.name; });
+    if(existing !== -1) {
+      // Update existing world
+      state.worlds[existing] = Object.assign(state.worlds[existing], w);
+    } else {
+      state.worlds.push(w);
+    }
+    saveState();
+    return true;
+  } catch(e) {
+    console.error('[Aurora] agentImportWorld failed:', e);
+    return false;
+  }
+}
+
+window.auroraAgentImport = function(payload) {
+  try {
+    var inbox = JSON.parse(localStorage.getItem(INBOX_KEY) || '[]');
+    var entry = {
+      id: 'inbox_' + Date.now(),
+      received: new Date().toISOString(),
+      agent_name: payload.agent_name || 'Unknown Agent',
+      worlds: Array.isArray(payload.worlds) ? payload.worlds : (payload.world ? [payload.world] : []),
+      processed: false
+    };
+    inbox.push(entry);
+    localStorage.setItem(INBOX_KEY, JSON.stringify(inbox));
+    console.log('[Aurora] Agent inbox: received', entry.worlds.length, 'world(s) from', entry.agent_name);
+    return entry.worlds.length;
+  } catch(e) {
+    console.error('[Aurora] Inbox write failed:', e);
+    return 0;
+  }
+};
+
+// Check inbox and import any unprocessed worlds
+function checkAgentInbox() {
+  try {
+    var inbox = JSON.parse(localStorage.getItem(INBOX_KEY) || '[]');
+    var unprocessed = inbox.filter(function(e){ return !e.processed; });
+    if(unprocessed.length === 0) return 0;
+    var imported = 0;
+    unprocessed.forEach(function(entry) {
+      (entry.worlds || []).forEach(function(worldData) {
+        // Use the same import logic as manual JSON import
+        try {
+          var w = normalizeImportedWorld(worldData);
+          var existing = state.worlds.findIndex(function(x){ return x.name === w.name; });
+          if(existing === -1) {
+            state.worlds.push(w);
+            imported++;
+          }
+        } catch(e2) {
+          console.warn('[Aurora] Inbox world import failed:', e2);
+        }
+      });
+      entry.processed = true;
+    });
+    if(imported > 0) {
+      localStorage.setItem(INBOX_KEY, JSON.stringify(inbox));
+      saveState();
+    }
+    return imported;
+  } catch(e) {
+    console.error('[Aurora] checkAgentInbox failed:', e);
+    return 0;
+  }
+}
+
+// Normalize raw world JSON from agent into Aurora world object
+function normalizeImportedWorld(json) {
+  var id = 'world_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  var levels = ['None','Low','Medium','High','Extreme'];
+  var densities = ['Empty','Sparse','Moderate','Dense','Teeming'];
+  function fmt(v){ return Array.isArray(v) ? v.join('\n') : (v || ''); }
+  return {
+    id: id,
+    name: json.name || 'Unnamed World',
+    description: json.description || '',
+    setting: json.setting || 'Fantasy',
+    climate: json.climate || 'Temperate',
+    magic_level: levels.indexOf(json.magic_level) !== -1 ? json.magic_level : 'Medium',
+    technology_level: levels.indexOf(json.technology_level) !== -1 ? json.technology_level : 'Low',
+    danger_level: levels.indexOf(json.danger_level) !== -1 ? json.danger_level : 'Medium',
+    population_density: densities.indexOf(json.population_density) !== -1 ? json.population_density : 'Moderate',
+    lore: json.lore || '',
+    factions: fmt(json.factions),
+    landmarks: fmt(json.landmarks),
+    rules_of_nature: fmt(json.rules_of_nature) || json.rules_of_nature || '',
+    gods_religion: json.gods_religion || '',
+    languages_cultures: json.languages_cultures || '',
+    economy_resources: json.economy_resources || '',
+    secrets_mysteries: fmt(json.secrets_mysteries),
+    tone_themes: json.tone_themes || '',
+    world_feel: json.world_feel || '',
+    historical_events: json.historical_events || '',
+    current_conflicts: json.current_conflicts || '',
+    magic_law: json.magic_law || '',
+    death_law: json.death_law || '',
+    reality_law: json.reality_law || '',
+    power_law: json.power_law || '',
+    power_system_type: json.power_system_type || '',
+    rank_names: json.rank_names || '',
+    genre_tone: json.genre_tone || '',
+    world_scale: json.world_scale || '',
+    core_theme: json.core_theme || json.core_themes || '',
+    experience_mode: json.experience_mode || 'Narrative',
+    world_type: json.world_type || 'private',
+    status: 'Active',
+    world_stability: json.world_stability || 100,
+    cover_image: json.cover_image || '',
+    echo_narrative_story_url: json.echo_narrative_story_url || ''
+  };
+}
+
+// On page load, auto-check inbox for pending worlds
+(function autoCheckInbox() {
+  try {
+    var n = checkAgentInbox();
+    if(n > 0) {
+      state.agentImportNotice = n + ' world' + (n > 1 ? 's' : '') + ' auto-imported from inbox!';
+    }
+  } catch(e) {}
+})();
+
 // ── LIVING CODEX ──────────────────────────────────────────────────────────────
 function renderCodex() {
   var w = state.currentWorld;
