@@ -34,6 +34,7 @@ let state = {
   screen: 'home',
   apiKey: localStorage.getItem(KEY_STORE) || '',
   agentImportNotice: null,
+  loreCorrections: JSON.parse(localStorage.getItem('aurora_lore_corrections_'+localStorage.getItem('aurora_active_world_id')||'[]')||'[]'),
   agentImportError: null,
   worlds: (function(){
     var stored = JSON.parse(localStorage.getItem('aurora_worlds') || '[]');
@@ -797,11 +798,18 @@ function buildSystemPrompt() {
     + 'KNOWN NPCs (treat each as a real person with memory and agenda):\n' + npcCtx + '\n\n'
     + 'FACTION REPUTATIONS:\n' + factionRepCtx + '\n\n'
     + 'ACTIVE QUESTS:\n' + questCtx + '\n\n'
+    + (state.loreCorrections && state.loreCorrections.length > 0
+        ? '⚠️ LORE CORRECTIONS (player-defined — ABSOLUTE OVERRIDES, obey permanently):\n'
+          + state.loreCorrections.map(function(c,i){ return (i+1)+'. '+c; }).join('\n') + '\n\n'
+        : '')
     + 'RECENT EXCHANGES (last ' + (state.recentMemory.length) + ' turns):\n' + (recentCtx || '(None yet.)') + '\n\n'
     + 'NARRATOR RULES:\n'
     + '- Present tense, second person ("You step forward...").\n'
     + '- 2-4 punchy paragraphs. Make every word count.\n'
     + '- End with tension or an implicit decision point.\n'
+    + '- PLAYER CANON IS LAW: This player designed this world. Every detail they established — setting, lore, factions, landmarks, rules of nature — is immutable fact. You may NEVER contradict, retcon, overwrite, or reintroduce elements the player already defined. If the player said there are no dragons, there are no dragons. If they said magic is rare, it is rare. Treat their world document as sacred.\n'
+    + '- LORE CORRECTIONS ARE ABSOLUTE: If a LORE CORRECTION block appears in the context, it overrides everything — including your own previous narration. Obey it completely and permanently for the rest of the session.\n'
+    + '- DO NOT WORLD-BUILD OVER THE PLAYER: Never add new major lore, factions, or world rules that contradict the player\'s design. You may enrich with small details but never contradict the foundation.\n'
     + '- LIVING WORLD: The world moves whether or not the player is watching. NPCs pursue their own goals.\n'
     + '- NPC MEMORY: Every named NPC remembers every past encounter with ' + c.name + '. They reference it. They hold grudges. They repay debts.\n'
     + '- NPC CONSISTENCY: NPCs never act against their stated goals or established personality. An enemy does not suddenly become friendly without a clear reason.\n'
@@ -849,7 +857,11 @@ async function startGame() {
   state.inCombat = false; state.enemy = null;
   state.actionCount = 0; state.turnCount = 0; state.chapters = [];
   state.showJournal = false; state.showStats = false; state.showInventory = false; state.showShop = false;
+  state.showLoreFix = false;
   state.deathScreen = false; state.lootToast = null;
+  // Load lore corrections for this specific world
+  var corrKey = 'aurora_lore_corrections_' + (state.currentWorld ? state.currentWorld.id : 'global');
+  state.loreCorrections = JSON.parse(localStorage.getItem(corrKey) || '[]');
   // ── EQUINOX GRIEF TRACKER ────────────────────────────────────────────────
   state.griefScore = 0;          // accumulates per session
   state.equinoxStrikes = state.equinoxStrikes || 0; // persists across sessions
@@ -871,8 +883,17 @@ async function startGame() {
   try {
     var charAbilities = state.currentChar.abilities ? state.currentChar.abilities.slice(0,100) : '';
     var scenarioHint = (state.currentChar.starting_scenario && state.currentChar.starting_scenario.trim()) ? 'OPENING SCENARIO (use this exactly as the starting scene, expand it with vivid sensory detail and immediate stakes): "' + state.currentChar.starting_scenario.trim() + '". ' : '';
-    var openingPrompt = 'BEGIN THE STORY. Opening scene for ' + state.currentChar.name + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') in ' + state.currentWorld.name + '. ' + 'Setting: ' + state.currentWorld.setting + ', ' + state.currentWorld.climate + ' climate, ' + state.currentWorld.danger_level + ' danger. ' + (state.currentWorld.lore ? 'Lore: ' + state.currentWorld.lore.slice(0,200) + '. ' : '') + (state.currentChar.backstory ? 'BACKSTORY — this MUST shape the opening scene: ' + state.currentChar.backstory.slice(0,250) + '. ' : '') + (charAbilities ? 'Abilities: ' + charAbilities + '. ' : '') + scenarioHint + (!scenarioHint ? 'Open in a scene that directly references the character\'s backstory and what drove them here. ' : '') + 'Hook in the first sentence. 2-3 punchy paragraphs. End with something the player must decide right now.'
-    var text = await callAI('You are a cinematic RPG narrator. Be vivid, immediate, atmospheric.', openingPrompt, 500);
+    var openingPrompt = 'CRITICAL RULE: This player personally designed this world. Every detail — the setting, the lore, the factions, the rules of nature — is ESTABLISHED CANON. Do NOT reintroduce or re-describe the world as if the player is discovering it for the first time. The world already exists. Drop the character straight INTO a living moment inside it.\n\n'
+      + 'BEGIN THE STORY. Opening scene for ' + state.currentChar.name + ' (' + state.currentChar.class + ', ' + state.currentChar.alignment + ') in ' + state.currentWorld.name + '.\n'
+      + 'Setting: ' + state.currentWorld.setting + ' | Climate: ' + state.currentWorld.climate + ' | Danger: ' + state.currentWorld.danger_level + '\n'
+      + (state.currentWorld.lore ? 'Lore (TREAT AS FACT — do not invent contradictions): ' + state.currentWorld.lore.slice(0,300) + '\n' : '')
+      + (state.currentWorld.rules_of_nature ? 'Rules of this world (ABSOLUTE — never violate): ' + state.currentWorld.rules_of_nature.slice(0,200) + '\n' : '')
+      + (state.currentChar.backstory ? 'CHARACTER BACKSTORY — this MUST shape the opening scene: ' + state.currentChar.backstory.slice(0,250) + '\n' : '')
+      + (charAbilities ? 'Abilities: ' + charAbilities + '\n' : '')
+      + scenarioHint
+      + (!scenarioHint ? 'Open mid-scene — character already in motion, world already in motion. Reference backstory in the first sentence. ' : '')
+      + 'Hook immediately. 2-3 punchy paragraphs. End with something the player must decide right now. Never open with world exposition.';
+    var text = await callAI('You are a cinematic RPG narrator. The player BUILT this world — it is their creation. Honor every detail they established. Be vivid and immediate. Drop the character into a living moment, not a tour.', openingPrompt, 500);
     state.messages.push({ role:'narrator', text:text, id: Date.now() });
     addToMemory('narrator', text);
     // Seed the first key event
@@ -3587,6 +3608,34 @@ function attachEditCanonWorldEvents() {
   });
 }
 
+function renderLoreFixPanel() {
+  var corrections = state.loreCorrections || [];
+  var list = corrections.length > 0
+    ? corrections.map(function(c, i){
+        return '<div style="display:flex;align-items:flex-start;gap:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:8px 12px;margin-bottom:6px">'
+          +'<div style="flex:1;color:#fca5a5;font-size:0.82rem;line-height:1.5">'+esc(c)+'</div>'
+          +'<button class="btn-remove-correction" data-i="'+i+'" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:0.85rem;padding:0;flex-shrink:0">✕</button>'
+          +'</div>';
+      }).join('')
+    : '<p style="color:#6b7280;font-size:0.82rem;font-style:italic">No corrections set yet. The narrator will follow your world as-is.</p>';
+
+  return '<div style="border-bottom:1px solid rgba(239,68,68,0.2);background:rgba(15,5,5,0.95);padding:16px;flex-shrink:0">'
+    +'<div style="max-width:42rem;margin:0 auto">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    +'<div style="display:flex;align-items:center;gap:8px">'
+    +'<span style="font-size:0.85rem;font-weight:700;color:#ef4444">✏️ Lore Corrections</span>'
+    +'<span style="color:#6b7280;font-size:0.75rem">These rules override the narrator permanently.</span>'
+    +'</div>'
+    +'<button id="btn-close-lore-fix" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1rem">✕</button>'
+    +'</div>'
+    +list
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<input id="lore-fix-input" type="text" placeholder="e.g. There are no dragons in this world. Magic requires physical components." style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 12px;color:white;font-size:0.85rem;outline:none">'
+    +'<button id="btn-add-correction" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:8px 14px;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.85rem;white-space:nowrap">Add Rule</button>'
+    +'</div>'
+    +'</div></div>';
+}
+
 function renderExpandPromptOverlay() {
   if (!state.showExpandOverlay) return '';
   var loading = state.expandingWorld;
@@ -4193,8 +4242,11 @@ function renderPlay() {
     +'<button id="btn-toggle-crafting" style="font-size:0.75rem;background:'+(state.showCrafting?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">⚒️</button>'
     +'<button id="btn-toggle-inv" style="font-size:0.75rem;background:'+(state.showInventory?'rgba(250,204,21,0.2)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">🎒 <span style=\'color:#facc15\'>'+state.gold+'g</span></button>'
     +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
+    +'<button id="btn-toggle-lore-fix" title="Correct a lore inconsistency" style="font-size:0.75rem;background:'+(state.showLoreFix?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">✏️ Lore'+(state.loreCorrections&&state.loreCorrections.length>0?'<span style="background:#ef4444;color:white;border-radius:9999px;padding:0 5px;font-size:0.65rem;margin-left:4px">'+state.loreCorrections.length+'</span>':'')+'</button>'
     +'</div></div>'
     +statsBar+combatBars
+    // Lore Correction Panel
+    +(state.showLoreFix ? renderLoreFixPanel() : '')
     // Messages
     +'<div id="messages-scroll" style="flex:1;overflow-y:auto;padding:24px 16px">'
     +'<div style="max-width:42rem;margin:0 auto">'+msgs+typing+summarizing+'<div id="messages-end"></div></div>'
@@ -4271,6 +4323,34 @@ function attachPlayEvents() {
   if(tcr) tcr.addEventListener('click',function(){ state.showCrafting=!state.showCrafting; render(); });
   if(tj) tj.addEventListener('click',function(){state.showJournal=!state.showJournal;render();scrollToBottom();});
   if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
+  // Lore Correction panel
+  var tlf = document.getElementById('btn-toggle-lore-fix');
+  if(tlf) tlf.addEventListener('click', function(){ state.showLoreFix = !state.showLoreFix; render(); });
+  var clf = document.getElementById('btn-close-lore-fix');
+  if(clf) clf.addEventListener('click', function(){ state.showLoreFix = false; render(); });
+  var addCorr = document.getElementById('btn-add-correction');
+  if(addCorr) addCorr.addEventListener('click', function(){
+    var inp2 = document.getElementById('lore-fix-input');
+    var val = inp2 ? inp2.value.trim() : '';
+    if (!val) return;
+    if (!state.loreCorrections) state.loreCorrections = [];
+    state.loreCorrections.push(val);
+    localStorage.setItem('aurora_lore_corrections_' + (state.currentWorld ? state.currentWorld.id : 'global'), JSON.stringify(state.loreCorrections));
+    inp2.value = '';
+    render();
+  });
+  // Allow Enter key to add correction
+  var loreInp = document.getElementById('lore-fix-input');
+  if(loreInp) loreInp.addEventListener('keydown', function(e){ if(e.key==='Enter'){ var addBtn=document.getElementById('btn-add-correction'); if(addBtn) addBtn.click(); } });
+  // Remove individual corrections
+  document.querySelectorAll('.btn-remove-correction').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var i = parseInt(btn.getAttribute('data-i'));
+      state.loreCorrections.splice(i, 1);
+      localStorage.setItem('aurora_lore_corrections_' + (state.currentWorld ? state.currentWorld.id : 'global'), JSON.stringify(state.loreCorrections));
+      render();
+    });
+  });
   // Inventory + Shop
   var ti=document.getElementById('btn-toggle-inv');
   if(ti) ti.addEventListener('click',function(){state.showInventory=!state.showInventory;if(!state.showInventory)state.showShop=false;render();});
