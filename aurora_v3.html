@@ -926,6 +926,7 @@ function buildSystemPrompt() {
     + (w.economy_resources ? '- Economy: ' + w.economy_resources + '\n' : '')
     + (w.secrets_mysteries ? '- World Secrets (known only to you as Narrator — reveal slowly through play): ' + w.secrets_mysteries + '\n' : '')
     + (w.magic_law ? '- MAGIC LAW (BINDING — never violate): ' + w.magic_law + '\n' : '')
+    + (w.power_system_type ? '- POWER SYSTEM (BINDING): ' + w.power_system_type + (w.rank_names ? ' | Ranks: ' + w.rank_names : '') + '. Enforce progression rules strictly.\n' : '')
     + (w.power_law ? '- POWER LAW (BINDING — growth follows this exactly): ' + w.power_law + '\n' : '')
     + (w.death_law ? '- DEATH LAW (BINDING — never bypass): ' + w.death_law + '\n' : '')
     + (w.reality_law ? '- REALITY LAW (BINDING — gods, fate, prophecy follow these rules): ' + w.reality_law + '\n' : '')
@@ -4161,6 +4162,7 @@ function attachCreateWorldEvents() {
   document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld[b.dataset.field]=b.dataset.val;render();});});
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
   document.querySelectorAll('.mode-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.experience_mode=b.dataset.mode;render();});});
+  document.querySelectorAll('.psys-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.power_system_type=b.dataset.psys;render();});});
   document.querySelectorAll('.tone-btn').forEach(function(b){b.addEventListener('click',function(){
     collectWorldStep();
     var t=b.dataset.tone; var tones=state.draftWorld.tone_themes||'';
@@ -4637,6 +4639,9 @@ function collectCharStep() {
     itemCards.forEach(function(card){ try { itArr.push(JSON.parse(card.dataset.item)); } catch(e){} });
     state.draftChar.item_cards = itArr;
   }
+  // Collect origin & flaw (set via button clicks, just ensure textarea custom values are captured)
+  var fd=document.getElementById('char-flaw-detail');if(fd)state.draftChar.flaw_detail=fd.value;
+  var co=document.getElementById('char-custom-origin');if(co&&co.value.trim()){state.draftChar.origin='custom';state.draftChar.origin_detail=co.value.trim();}
 }
 
 // AI stat generator — builds stats from class + backstory + race + level
