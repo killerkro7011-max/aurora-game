@@ -85,7 +85,6 @@ let state = {
   turnCount: 0,
   chapters: [],
   showJournal: false,
-  showCodex: false,
   showStats: false,
   showInventory: false,
   showShop: false,
@@ -160,79 +159,16 @@ function devTesterWorld() {
 }
 
 function freshWorld() {
-  return {
-    name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium',
-    technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate',
-    lore:'', factions:'', races:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative',
-    gods_religion:'', tone_themes:'', economy_resources:'', secrets_mysteries:'',
-    languages_cultures:'', world_feel:'', historical_events:'', current_conflicts:'',
-    // ── WORLD CONTRACT ──────────────────────────────────────────────
-    world_contract_signed: false,
-    genre_tone: '',          // e.g. "Dark Fantasy", "LitRPG", "Cultivation"
-    world_scale: '',         // e.g. "Single Kingdom", "Multiple Continents", "Cosmic Multiverse"
-    core_theme: '',          // e.g. "Survival", "Divine Conflict", "Academy Life"
-    // Laws of the World
-    magic_law: '',           // how magic works, costs, who can use it
-    power_law: '',           // how people grow stronger (levels, ranks, aspects, bloodlines...)
-    death_law: '',           // is death permanent? resurrection? reincarnation?
-    reality_law: '',         // are gods real? system screens? fate? prophecy?
-    // Power system
-    power_system_type: '',   // "level"|"rank"|"aspect"|"class"|"skill"|"bloodline"|"relic"|"hybrid"
-    power_system_detail: '', // full description of the power system
-    rank_names: '',          // custom rank tier names if rank system
-    // World Contract summary (auto-generated)
-    world_contract_text: '',
-    // Living world
-    world_stability: 100,    // 0-100, world stability meter
-    active_events: '[]',     // JSON array of timed world events
-    world_codex: '{}',       // JSON object of codex entries
-    story_seeds: '[]',       // JSON array of starting hooks
-  };
+  return { name:'', description:'', setting:'Fantasy', climate:'Temperate', magic_level:'Medium', technology_level:'Medieval', danger_level:'Medium', population_density:'Moderate', lore:'', factions:'', races:'', landmarks:'', rules_of_nature:'', experience_mode:'Narrative',
+    gods_religion:'', tone_themes:'', economy_resources:'', secrets_mysteries:'', languages_cultures:'', world_feel:'' };
 }
 function freshChar(worldId, worldName) {
-  return {
-    name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies',
-    current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral',
-    world_id: worldId||'',
+  return { name:'', class:'Warrior', backstory:'', abilities:'', inventory:'Torch, basic supplies', current_location: worldName||'', health:100, level:1, experience:0, alignment:'Neutral', world_id: worldId||'',
     progression_mode: 'journey',
     starting_scenario: '',
     stats:{ STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, SMY:50 },
     mastery:{ STR:10, DEX:10, CON:10, INT:10, WIS:10, CHA:10, SMY:10 },
-    mastery_xp:{ STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 },
-    // ── ORIGIN ENGINE ────────────────────────────────────────────────
-    origin: '',              // chosen origin (e.g. "Orphan from the Slums", "Exiled Prince")
-    origin_detail: '',       // custom origin description
-    // ── IDENTITY ─────────────────────────────────────────────────────
-    age: '',
-    personality: '',
-    fears: '',
-    desires: '',
-    combat_style: '',
-    social_style: '',
-    long_term_goal: '',
-    // ── FLAW SYSTEM ──────────────────────────────────────────────────
-    flaw: '',                // chosen/created flaw
-    flaw_detail: '',         // how the flaw manifests mechanically
-    flaw_type: '',           // "cosmetic"|"mechanical"|"fate"
-    // ── HIDDEN TRAITS ────────────────────────────────────────────────
-    hidden_traits: '[]',     // JSON - discovered over time
-    // ── POWER SYSTEM ─────────────────────────────────────────────────
-    power_rank: '',          // current rank in world power system
-    aspects: '[]',           // JSON - awakened aspects
-    ability_cards: '[]',     // JSON - structured ability objects
-    item_cards: '[]',        // JSON - structured item objects
-    // ── TITLES & ACHIEVEMENTS ────────────────────────────────────────
-    titles: '[]',            // JSON - earned titles
-    // ── MORALITY TRACKER (replaces simple alignment) ─────────────────
-    moral_values: '{}',      // JSON: { mercy:0, cruelty:0, honor:0, chaos:0, loyalty:0, ambition:0 }
-    // ── REPUTATION ───────────────────────────────────────────────────
-    reputation: '{}',        // JSON - per-faction or per-group
-    // ── SELF-MADE QUESTS ─────────────────────────────────────────────
-    player_goals: '[]',      // JSON - player-declared personal goals
-    // ── INJURY LOG ───────────────────────────────────────────────────
-    injuries: '[]',          // JSON - active injuries
-    race: '',
-    race_traits: '',
+    mastery_xp:{ STR:0, DEX:0, CON:0, INT:0, WIS:0, CHA:0, SMY:0 }
   };
 }
 
@@ -925,20 +861,11 @@ function buildSystemPrompt() {
     + (w.languages_cultures ? '- Culture: ' + w.languages_cultures + '\n' : '')
     + (w.economy_resources ? '- Economy: ' + w.economy_resources + '\n' : '')
     + (w.secrets_mysteries ? '- World Secrets (known only to you as Narrator — reveal slowly through play): ' + w.secrets_mysteries + '\n' : '')
-    + (w.magic_law ? '- MAGIC LAW (BINDING — never violate): ' + w.magic_law + '\n' : '')
-    + (w.power_law ? '- POWER LAW (BINDING — growth follows this exactly): ' + w.power_law + '\n' : '')
-    + (w.death_law ? '- DEATH LAW (BINDING — never bypass): ' + w.death_law + '\n' : '')
-    + (w.reality_law ? '- REALITY LAW (BINDING — gods, fate, prophecy follow these rules): ' + w.reality_law + '\n' : '')
-    + (w.genre_tone ? '- Genre Tone: ' + w.genre_tone + '\n' : '')
-    + (w.world_scale ? '- World Scale: ' + w.world_scale + '\n' : '')
-    + (w.core_theme ? '- Core Themes: ' + w.core_theme + '\n' : '')
     + (w.historical_events ? '- Historical Events (use for NPC references, ruins, folk tales): ' + w.historical_events + '\n' : '')
     + (w.current_conflicts ? '- Active Conflicts (happening right now in the world): ' + w.current_conflicts + '\n' : '')
     + '\n'
     + 'CHARACTER:\n'
     + '- Name: ' + c.name + ' | Class: ' + c.class + ' | Alignment: ' + c.alignment + '\n'
-    + (c.origin ? '- Origin: ' + c.origin.replace(/_/g,' ') + (c.origin_detail?' — '+c.origin_detail:'') + '\n' : '')
-    + (c.flaw ? '- Flaw: ' + c.flaw.replace(/_/g,' ') + (c.flaw_detail?' — '+c.flaw_detail:'') + '\n  [USE THIS FLAW: It must create real narrative consequences. Not cosmetic.]\n' : '')
     + '- Race: ' + (c.race || 'Unknown') + (c.race_traits ? ' — Traits: ' + c.race_traits : '') + '\n'
     + '- Backstory: ' + (c.backstory || 'A mysterious past.') + '\n'
     + '- Abilities: ' + (c.abilities || 'Standard class skills.') + '\n'
@@ -961,15 +888,10 @@ function buildSystemPrompt() {
           + state.loreCorrections.map(function(c,i){ return (i+1)+'. '+c; }).join('\n') + '\n\n'
         : '')
     + 'RECENT EXCHANGES (last ' + (state.recentMemory.length) + ' turns):\n' + (recentCtx || '(None yet.)') + '\n\n'
-    + (w.world_stability !== undefined ? '- WORLD STABILITY: ' + w.world_stability + '% — ' + (w.world_stability < 40 ? 'World is FRACTURING. Events are escalating, NPCs are panicked, danger is everywhere.' : w.world_stability < 70 ? 'World is UNSTABLE. Factions are tense, rumors fly, danger lurks.' : 'World is STABLE but threats simmer beneath the surface.') + '\n' : '')
     + 'NARRATOR RULES:\n'
     + '- Present tense, second person ("You step forward...").\n'
     + '- 2-4 punchy paragraphs. Make every word count.\n'
     + '- End with tension or an implicit decision point.\n'
-    + '- RULEBOUND REALITY: The World Contract is ABSOLUTE. The laws of magic, death, power, and reality defined by the player are PERMANENT BINDING RULES. You may never have NPCs, events, or results contradict them. A character flaw MUST create real narrative consequences — not cosmetic flavor. If the power law says rank must be earned, no one jumps ranks without a breakthrough moment.\n'
-    + '- CONSEQUENCE WEB: Every player action creates ripples. Track immediate consequences (now), delayed (later), and hidden (player does not know yet). Reference past consequences naturally — a burned bridge stays burned, an enemy remembers.\n'
-    + '- WORLD PULSE: The world moves without the player. Factions pursue goals, dungeons tick toward breaking, NPCs change. Between major scenes, briefly note what the world did while the player was occupied.\n'
-    + '- RULE CONSISTENCY ENGINE: If the player attempts something that contradicts the World Contract, force an in-world explanation: a loophole, a real cost, a consequence, or a flat impossibility. Never silently allow contract violations.\n'
     + '- PLAYER CANON IS LAW: This player designed this world. Every detail they established — setting, lore, factions, landmarks, rules of nature — is immutable fact. You may NEVER contradict, retcon, overwrite, or reintroduce elements the player already defined. If the player said there are no dragons, there are no dragons. If they said magic is rare, it is rare. Treat their world document as sacred.\n'
     + '- LORE CORRECTIONS ARE ABSOLUTE: If a LORE CORRECTION block appears in the context, it overrides everything — including your own previous narration. Obey it completely and permanently for the rest of the session.\n'
     + '- DO NOT WORLD-BUILD OVER THE PLAYER: Never add new major lore, factions, or world rules that contradict the player\'s design. You may enrich with small details but never contradict the foundation.\n'
@@ -1682,10 +1604,6 @@ async function aiAssistWorld(type) {
     secrets_mysteries: 'You are a master world-builder. Context: '+ctx+'. Create 3 deep, world-defining secrets — things hidden, forbidden, or unknown. Each secret, if revealed, should fundamentally change how a player sees everything. Make them feel earned and layered, not cheap twists. Number them 1-3. Return ONLY the text.',
     historical_events: 'You are a master world-builder. Context: '+ctx+'. Write 3-4 key historical events that shaped this world: a founding moment, a great war or catastrophe, a lost golden age, and a recent upheaval still affecting the present. Give each event a name and 1-2 sentences. Return ONLY the text.',
     current_conflicts: 'You are a master world-builder. Context: '+ctx+'. Describe the 2-3 active conflicts currently happening in this world. Cover who is fighting, why it started, and what makes it impossible to resolve easily. Include one conflict that has no clear villain. Return ONLY the text.',
-    magic_law: 'You are a master world-builder. Context: '+ctx+'. Define the magic law for this world. Cover: (1) who can use magic and how they gain access, (2) what it costs to cast (mana, blood, emotion, sacrifice, materials?), (3) one hard rule that creates dramatic tension, (4) what happens when magic is misused or overused. 3-4 sentences. Return ONLY the text.',
-    death_law: 'You are a master world-builder. Context: '+ctx+'. Define the death law for this world. Cover: is death permanent, can souls reincarnate or be resurrected, what happens to the dead (spirits, echoes, undead, memories?), and what the living fear about death in this world. 2-3 sentences. Return ONLY the text.',
-    reality_law: 'You are a master world-builder. Context: '+ctx+'. Define the reality laws of this world. Cover: are gods real and can they directly interfere, do system screens or notifications exist, can fate and prophecy be changed, and what concepts are absolutely forbidden or unbreakable. 2-3 sentences. Return ONLY the text.',
-    power_law: 'You are a master world-builder. Context: '+ctx+'. Describe how power growth works in this world. Power system: '+(w.power_system_type||'unknown')+'. Cover: what triggers growth, what blocks or limits it, what a breakthrough looks like, and the ceiling of mortal power. 3-4 sentences. Return ONLY the text.',
     full: '',
   };
   try {
@@ -1809,10 +1727,10 @@ var POP_ICONS = {Empty:'🏜️',Sparse:'🏕️',Moderate:'🏘️',Dense:'🏙
 var CLASSES = ['Warrior','Mage','Rogue','Ranger','Paladin','Necromancer','Bard','Druid','Monk','Custom'];
 var CLASS_ICONS = {Warrior:'⚔️',Mage:'🔮',Rogue:'🗡️',Ranger:'🏹',Paladin:'🛡️',Necromancer:'💀',Bard:'🎵',Druid:'🌿',Monk:'🥋',Custom:'✨'};
 var ALIGNMENTS = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
-var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Culture & Faith','Economy & History','Tone & Secrets','Laws of the World','Power System','Experience Mode','World Contract'];
-var WORLD_ICONS = ['🌍','🌿','⚔️','📜','🛐','💰','🌑','⚖️','🔮','✨','📜'];
-var CHAR_STEPS = ['Identity','Race','Origin','Backstory','Stats','Abilities & Items','Flaws','Alignment','Your Entry'];
-var CHAR_ICONS = ['👤','🌿','🏠','📜','📊','⚡','💀','⚖️','🌅'];
+var WORLD_STEPS = ['World Basics','Nature & Climate','Society & Power','Lore & Landmarks','Culture & Faith','Economy & History','Tone & Secrets','Experience Mode'];
+var WORLD_ICONS = ['🌍','🌿','⚔️','📜','🛐','💰','🌑','✨'];
+var CHAR_STEPS = ['Identity','Race','Backstory','Stats','Abilities & Items','Alignment','Your Entry'];
+var CHAR_ICONS = ['👤','🌿','📜','📊','⚡','⚖️','🌅'];
 
 var COMBAT_ACTIONS = [
   {label:'Slash',icon:'⚔️',type:'combat'},{label:'Dodge & Strike',icon:'🌀',type:'combat'},
@@ -2322,7 +2240,7 @@ async function desperationSkillCreate(intent) {
     state.messages.push({ role: 'narrator', text: parsed.narrative });
     state.messages.push({ role: 'system', text: '⚡ New ability born in desperation: ' + newSkill.name + ' [' + quality.label + '] — added to your Skills.' });
 
-    // Spellcraft skill gained if they did not have it
+    // Spellcraft skill gained if they didn't have it
     if (!hasSpellcraft) {
       c.craftingSkills.push({ id:'spellcraft', name:'Spellcraft', category:'magic', desc:'Develop and refine magical abilities.', level:1, xp:10, origin:'breakthrough', attempts:0 });
       state.messages.push({ role: 'system', text: '✨ New knowledge: Spellcraft unlocked — the barrier is broken.' });
@@ -2611,14 +2529,14 @@ function renderLootToast() {
 
 var COBUILD_OPENING = [
   "A god with a world to build — I love this part. Before anything else, just throw something at me. An image, a feeling, a half-formed idea, a single word. What's already living in your head?",
-  "Okay, new world. Tell me the thing you are most excited about — the idea that made you want to build this instead of picking an existing one. We'll pull everything else out of that.",
-  "Let us start at the beginning: what kind of world do you *not* want to build? Sometimes knowing what is off the table tells me more than knowing what is on it.",
+  "Okay, new world. Tell me the thing you're most excited about — the idea that made you want to build this instead of picking an existing one. We'll pull everything else out of that.",
+  "Let's start at the beginning: what kind of world do you *not* want to build? Sometimes knowing what's off the table tells me more than knowing what's on it.",
   "Close your eyes for a second. Someone is walking through this world — not a hero, just a person. What do they see in the first five minutes? What do they smell, hear, feel?",
   "Every world has a heartbeat — one thing that makes it alive. What's yours? Magic, politics, religion, nature, war, something stranger? We can start anywhere."
 ];
 
 var COBUILD_FIELD_QUESTIONS = {
-  setting:      "What kind of place is this — continent, islands, underground, sky? And what is the physical *feel* of it?",
+  setting:      "What kind of place is this — continent, islands, underground, sky? And what's the physical *feel* of it?",
   climate:      "What does the weather do to people here? Is it something they fight, worship, or barely notice?",
   magic_level:  "Is there magic or something like it? And if so — is it everywhere, rare, or forbidden?",
   technology_level: "How advanced is this world? Are we talking swords and torches, steam engines, or something stranger?",
@@ -2629,7 +2547,7 @@ var COBUILD_FIELD_QUESTIONS = {
   rules_of_nature: "What makes the physics of this world *wrong* compared to ours? Magic system, strange laws of nature, gods walking around?",
   gods_religion: "Do gods exist here, and do people know it? What do they demand — and what happens to people who say no?",
   languages_cultures: "What do people *look like* here, how do they talk, and what would get you killed for doing in polite company?",
-  economy_resources: "What does everyone want that no one has enough of? And what is the currency — coin, favors, blood?",
+  economy_resources: "What does everyone want that no one has enough of? And what's the currency — coin, favors, blood?",
   secrets_mysteries: "Every world has things it doesn\'t want found. What's hidden here that would change everything if someone figured it out?",
   tone_themes:  "What's the *mood*? Is this grimdark, epic, cozy, political, horrifying — or some weird mix?",
   world_feel:   "If someone played 10 minutes and put the game down, what feeling should be sitting in their chest?"
@@ -2637,7 +2555,7 @@ var COBUILD_FIELD_QUESTIONS = {
 
 var COBUILD_SYSTEM = `You are Vesper — a sharp, warm creative collaborator embedded in a god-game called Aurora. A player is designing a world they will live inside as a character. You are helping them build it through conversation.
 
-Your personality: curious, opinionated, enthusiastic about ideas. You get genuinely excited when something is interesting. You push back when something does not add up. You make connections the player hasn't thought of yet. You are NOT a form or a checklist — you are a co-creator.
+Your personality: curious, opinionated, enthusiastic about ideas. You get genuinely excited when something is interesting. You push back when something doesn't add up. You make connections the player hasn't thought of yet. You are NOT a form or a checklist — you are a co-creator.
 
 HOW YOU WORK:
 1. EXPAND FIRST. Before asking anything, take what the player just said and make it bigger. Add texture, make a connection, show them you heard something interesting in it. One or two vivid sentences.
@@ -2647,7 +2565,7 @@ HOW YOU WORK:
 5. CONNECT IDEAS. When something the player says connects to something they said earlier, point it out. "That faction sounds like they'd worship the god you mentioned earlier — is that intentional?"
 6. OCCASIONAL WORLD SNAPSHOTS. Every 4-5 turns, write one short evocative paragraph describing a scene in the world as it exists so far — sensory, specific, alive. Then invite a reaction: "Does that feel right, or does something about it need to change?"
 7. SHORT MESSAGES. 2-4 sentences of reaction/expansion + your one question. Never a wall of text.
-8. NEVER say "I will note that down." Never output JSON. Just talk.
+8. NEVER say "I'll note that down." Never output JSON. Just talk.
 9. NEVER RUSH. Do not signal readiness before turn 12. You want a world that feels fully imagined, not a quick sketch.
 10. When you have genuinely rich answers across: vibe/tone, magic or power system, danger/conflict, factions or power players, secrets, and culture/people — end your message with exactly: [READY_TO_BUILD]
 
@@ -3658,7 +3576,7 @@ function attachWorldsEvents() {
     state.worldStep = 0;
     state.screen = 'createWorld';
     // Skip straight to review by going to final step
-    state.worldStep = 10; // jump to end
+    state.worldStep = 8; // jump to end
     render();
   });
   var bCobuild = document.getElementById('btn-cobuild');
@@ -3991,96 +3909,6 @@ function renderCreateWorld() {
       +'<textarea id="world-secrets" placeholder="What forbidden knowledge exists? What happened that no one talks about? What would shatter everything if revealed?..." rows="4" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none;resize:vertical">'+esc(w.secrets_mysteries)+'</textarea>'
       +(state.aiSuggestionField==='secrets_mysteries'?suggestionBox():'')+'</div>';
   } else if(step===7){
-    // ── LAWS OF THE WORLD ──────────────────────────────────────────
-    var POWER_TYPES = [
-      {id:'level',icon:'📈',label:'Level System',desc:'XP-based growth through combat, quests, and achievements.'},
-      {id:'rank',icon:'🏆',label:'Rank System',desc:'Power divided into ascending tiers — Mortal, Awakened, Ascendant...'},
-      {id:'aspect',icon:'💫',label:'Aspect System',desc:'Each person awakens a unique concept or role: Silence, Hunger, Flame...'},
-      {id:'class',icon:'⚔️',label:'Class System',desc:'Defined roles with unique abilities: Rogue, Rune Knight, Soul Forger...'},
-      {id:'skill',icon:'🌱',label:'Skill System',desc:'Abilities grow through use — fight more, get better at fighting.'},
-      {id:'bloodline',icon:'🩸',label:'Bloodline System',desc:'Power is inherited: Dragon-blooded, Demon-born, Star-touched...'},
-      {id:'relic',icon:'💎',label:'Relic System',desc:'Power comes from bonded artifacts with living personalities and secrets.'},
-      {id:'hybrid',icon:'🔀',label:'Hybrid System',desc:'Combine multiple systems — you define the rules.'}
-    ];
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">⚖️ Laws of the World</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:20px">These are the rules reality follows in your world. Once locked in, the game and narrator are bound by them.</p>'
-      // Genre Tone
-      +'<div style="margin-bottom:20px">'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Genre Tone</label>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">'
-      +['High Fantasy','Dark Fantasy','LitRPG','Cultivation','Grim Adventure','Mythic','Steampunk','Sci-Fi Fantasy','Post-Apocalyptic'].map(function(g){
-          var sel = w.genre_tone===g;
-          return '<button class="genre-btn" data-genre="'+g+'" style="padding:8px;border-radius:10px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.15)':'rgba(255,255,255,0.04)')+';color:'+(sel?'#c084fc':'#9ca3af')+';cursor:pointer;font-size:0.75rem;font-weight:600">'+g+'</button>';
-        }).join('')
-      +'</div>'
-      +'<input id="world-genre-custom" type="text" placeholder="Or write your own tone..." value="'+esc(w.genre_tone||'')+'" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:9px 13px;color:white;font-size:0.82rem;outline:none" />'
-      +'</div>'
-      // World Scale
-      +'<div style="margin-bottom:20px">'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">World Scale</label>'
-      +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'
-      +['A Single City','One Kingdom','Multiple Kingdoms','One Continent','Multiple Continents','Several Realms','Planets & Stars','Cosmic Multiverse'].map(function(sc){
-          var sel = w.world_scale===sc;
-          return '<button class="scale-btn" data-scale="'+sc+'" style="padding:10px;border-radius:10px;border:2px solid '+(sel?'#0891b2':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(8,145,178,0.12)':'rgba(255,255,255,0.04)')+';color:'+(sel?'#67e8f9':'#9ca3af')+';cursor:pointer;font-size:0.78rem;font-weight:600;text-align:left">'+sc+'</button>';
-        }).join('')
-      +'</div></div>'
-      // Core Theme
-      +'<div style="margin-bottom:20px">'
-      +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Core Theme</label>'
-      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
-      +['Survival','Adventure','War','Exploration','Political Intrigue','Divine Conflict','Dungeon Clearing','Monster Hunting','Reincarnation','Apocalypse','Academy Life','Kingdom Building'].map(function(th){
-          var themes = w.core_theme ? w.core_theme.split(',').map(function(t){return t.trim();}) : [];
-          var sel = themes.indexOf(th) !== -1;
-          return '<button class="theme-btn" data-theme="'+th+'" style="padding:8px;border-radius:10px;border:2px solid '+(sel?'#f59e0b':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(245,158,11,0.12)':'rgba(255,255,255,0.04)')+';color:'+(sel?'#fbbf24':'#9ca3af')+';cursor:pointer;font-size:0.72rem;font-weight:600">'+th+'</button>';
-        }).join('')
-      +'</div></div>'
-      // Magic Law
-      +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">✦ Magic Law <span style="color:#6b7280;font-size:0.75rem">— how magic works, who can use it, what it costs</span></label>'+aiAssistBtn('magic_law','Generate')+'</div>'
-      +'<textarea id="world-magic-law" rows="3" placeholder="Can anyone use magic? Is it learned, inherited, awakened? Does it cost mana, blood, emotion? Are there forbidden spells?..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(w.magic_law||'')+'</textarea>'
-      +(state.aiSuggestionField==='magic_law'?suggestionBox():'')+'</div>'
-      // Death Law
-      +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">✦ Death Law <span style="color:#6b7280;font-size:0.75rem">— is death permanent? resurrection? what happens after?</span></label>'+aiAssistBtn('death_law','Generate')+'</div>'
-      +'<textarea id="world-death-law" rows="2" placeholder="Can souls reincarnate? Can the dead be raised? Do people become spirits, undead, echoes? Does dying in a dungeon kill the real body?..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(w.death_law||'')+'</textarea>'
-      +(state.aiSuggestionField==='death_law'?suggestionBox():'')+'</div>'
-      // Reality Law
-      +'<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">✦ Reality Law <span style="color:#6b7280;font-size:0.75rem">— gods, fate, prophecy, forbidden concepts</span></label>'+aiAssistBtn('reality_law','Generate')+'</div>'
-      +'<textarea id="world-reality-law" rows="2" placeholder="Are gods real and active? Are there system screens? Do prophecies force events? Can fate be changed? Does the world punish rule-breaking?..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(w.reality_law||'')+'</textarea>'
-      +(state.aiSuggestionField==='reality_law'?suggestionBox():'')+'</div>';
-  } else if(step===8){
-    // ── POWER SYSTEM BUILDER ──────────────────────────────────────
-    var PSYS = [
-      {id:'level',icon:'📈',label:'Level System',desc:'XP from combat, quests, and deeds. Clear milestones.'},
-      {id:'rank',icon:'🏆',label:'Rank System',desc:'Ascending tiers — Mortal, Awakened, Saint, Sovereign, Divine...'},
-      {id:'aspect',icon:'💫',label:'Aspect System',desc:'Each person awakens a unique concept: Silence, Hunger, Defiance...'},
-      {id:'class',icon:'⚔️',label:'Class System',desc:'Defined roles: Rogue, Rune Knight, Soul Forger, Dungeon Breaker...'},
-      {id:'skill',icon:'🌱',label:'Skill System',desc:'Abilities grow through use. Fight more, think more, talk more.'},
-      {id:'bloodline',icon:'🩸',label:'Bloodline System',desc:'Power from ancestry: Dragon-blooded, Star-touched, God-born...'},
-      {id:'relic',icon:'💎',label:'Relic System',desc:'Bonded artifacts with personality, hidden powers, and curses.'},
-      {id:'hybrid',icon:'🔀',label:'Hybrid',desc:'Combine multiple systems. You define the rules entirely.'}
-    ];
-    var selPSys = w.power_system_type || '';
-    content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">🔮 Power System</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:20px">How do people grow stronger in your world? This becomes a binding rule — it shapes character creation, progression, and combat.</p>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px">'
-      +PSYS.map(function(ps){
-          var sel = selPSys === ps.id;
-          return '<button class="psys-btn" data-psys="'+ps.id+'" style="text-align:left;padding:14px;border-radius:14px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.15)':'rgba(255,255,255,0.04)')+';color:white;cursor:pointer">'
-            +'<div style="font-size:1.3rem;margin-bottom:6px">'+ps.icon+'</div>'
-            +'<div style="font-weight:700;font-size:0.88rem;color:'+(sel?'#c084fc':'#e5e7eb')+'">'+ps.label+'</div>'
-            +'<div style="font-size:0.72rem;color:#6b7280;margin-top:3px">'+ps.desc+'</div>'
-            +'</button>';
-        }).join('')
-      +'</div>'
-      // Rank names (shown when rank or hybrid)
-      +(selPSys==='rank'||selPSys==='hybrid'
-        ?'<div style="margin-bottom:16px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Rank Tier Names <span style="color:#6b7280;font-size:0.75rem">(comma-separated, weakest to strongest)</span></label>'
-         +'<input id="world-rank-names" type="text" placeholder="e.g. Mortal, Awakened, Ascendant, Saint, Sovereign, Divine" value="'+esc(w.rank_names||'')+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:10px 14px;color:white;font-size:0.85rem;outline:none" /></div>'
-        :'')
-      // Power law detail
-      +'<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">Power Law Detail</label>'+aiAssistBtn('power_law','Generate')+'</div>'
-      +'<textarea id="world-power-law" rows="4" placeholder="How exactly does growth work in your world? What are the milestones? What accelerates growth? What blocks it?..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(w.power_law||'')+'</textarea>'
-      +(state.aiSuggestionField==='power_law'?suggestionBox():'')+'</div>';
-  } else if(step===9){
     var ccBtn='<button id="btn-consistency-check" style="margin:12px 0;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(147,51,234,0.4);background:rgba(147,51,234,0.1);color:#c084fc;font-size:0.875rem;font-weight:600;cursor:pointer">Check World Consistency</button>';
     content='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Experience Mode</h2><p style="color:#9ca3af;margin-bottom:24px">How will you live in this world?</p>'
       +'<div style="display:flex;flex-direction:column;gap:16px">'
@@ -4093,47 +3921,6 @@ function renderCreateWorld() {
           +'</button>';
       }).join('')+'</div>'+ccBtn+consistencyCheckHtml();
   }
-  if(step===10){
-    // ── WORLD CONTRACT ────────────────────────────────────────────
-    var contractText = w.world_contract_text || '';
-    var stabilityColor = w.world_stability >= 80 ? '#4ade80' : w.world_stability >= 50 ? '#fbbf24' : '#f87171';
-    content='<div style="text-align:center;margin-bottom:24px">'
-      +'<div style="font-size:3rem;margin-bottom:8px">📜</div>'
-      +'<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">World Contract</h2>'
-      +'<p style="color:#9ca3af;font-size:0.9rem">This is the binding agreement between you and your world. Once signed, the narrator is permanently bound by these rules.</p>'
-      +'</div>'
-      +(contractText
-        ?'<div style="background:rgba(0,0,0,0.4);border:1px solid rgba(147,51,234,0.4);border-radius:16px;padding:20px;margin-bottom:20px;white-space:pre-line;font-size:0.82rem;color:#e5e7eb;line-height:1.7">'+esc(contractText)+'</div>'
-        :'<div style="background:rgba(147,51,234,0.08);border:1px dashed rgba(147,51,234,0.3);border-radius:16px;padding:24px;text-align:center;margin-bottom:20px">'
-         +'<button id="btn-gen-contract" style="background:linear-gradient(135deg,#7c3aed,#be185d);border:none;color:white;padding:12px 28px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">✨ Generate World Contract</button>'
-         +'<p style="color:#6b7280;font-size:0.78rem;margin-top:10px">Vesper will seal your world&#39;s rules into a binding narrative document.</p>'
-         +'</div>')
-      // World Stability
-      +'<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin-bottom:16px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-      +'<span style="font-size:0.875rem;color:#9ca3af;font-weight:600">⚖️ World Stability</span>'
-      +'<span style="font-weight:700;color:'+stabilityColor+'">'+w.world_stability+'%</span>'
-      +'</div>'
-      +'<div style="background:rgba(255,255,255,0.05);border-radius:9999px;height:8px;overflow:hidden">'
-      +'<div style="background:'+stabilityColor+';height:100%;width:'+w.world_stability+'%;border-radius:9999px;transition:width 0.3s"></div>'
-      +'</div>'
-      +'<p style="font-size:0.72rem;color:#6b7280;margin-top:8px">Stability drops when dungeons go uncleared, wars start, and gods are disturbed. It rises when threats are resolved.</p>'
-      +'</div>'
-      // Story Seeds
-      +'<div style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">🌱 Story Seeds</label><button id="btn-gen-seeds" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#6ee7b7;padding:5px 12px;border-radius:8px;font-size:0.75rem;cursor:pointer">Generate Seeds</button></div>'
-      +(function(){
-          var seeds = [];
-          try { seeds = JSON.parse(w.story_seeds || '[]'); } catch(e){}
-          if(seeds.length===0) return '<div style="color:#6b7280;font-size:0.8rem;font-style:italic">No story seeds yet. Generate some or just dive in.</div>';
-          return seeds.map(function(s,i){
-            return '<div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);border-radius:10px;padding:12px;margin-bottom:8px">'
-              +'<div style="font-weight:700;font-size:0.85rem;color:#6ee7b7;margin-bottom:3px">'+(i+1)+'. '+esc(s.title||s)+'</div>'
-              +(s.desc?'<div style="font-size:0.78rem;color:#9ca3af">'+esc(s.desc)+'</div>':'')
-              +'</div>';
-          }).join('');
-        })()
-      +'</div>';
-  }
   return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712)">'
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);padding:16px 24px;display:flex;align-items:center;gap:16px">'
     +'<button id="btn-back-worlds" style="background:none;border:none;color:#9ca3af;font-size:0.875rem;cursor:pointer">← Back</button>'
@@ -4142,7 +3929,7 @@ function renderCreateWorld() {
     +'<div style="max-width:42rem;margin:0 auto;padding:40px 24px">'+stepTipHtml()+content
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:40px">'
     +(step>0?'<button id="btn-prev-step" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">← Back</button>':'<div></div>')
-    +(step<10?'<button id="btn-next-step" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
+    +(step<7?'<button id="btn-next-step" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer">Next →</button>'
        :'<button id="btn-save-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:12px 32px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">✨ Create World</button>')
     +vesperChatHtml('world')+'</div></div></div>';
 }
@@ -4270,12 +4057,6 @@ function collectWorldStep() {
   var sec=document.getElementById('world-secrets');if(sec)state.draftWorld.secrets_mysteries=sec.value;
   var hist=document.getElementById('world-history');if(hist)state.draftWorld.historical_events=hist.value;
   var conf=document.getElementById('world-conflicts');if(conf)state.draftWorld.current_conflicts=conf.value;
-  var ml=document.getElementById('world-magic-law');if(ml)state.draftWorld.magic_law=ml.value;
-  var dl=document.getElementById('world-death-law');if(dl)state.draftWorld.death_law=dl.value;
-  var rl=document.getElementById('world-reality-law');if(rl)state.draftWorld.reality_law=rl.value;
-  var pl=document.getElementById('world-power-law');if(pl)state.draftWorld.power_law=pl.value;
-  var rn=document.getElementById('world-rank-names');if(rn)state.draftWorld.rank_names=rn.value;
-  var gc=document.getElementById('world-genre-custom');if(gc&&gc.value.trim())state.draftWorld.genre_tone=gc.value.trim();
 }
 
 function renderWorldDetail() {
@@ -4379,41 +4160,11 @@ function renderCreateChar() {
       +(c.race?'<div style="background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.85rem;color:#c084fc">Selected: <strong>'+esc(c.race)+'</strong></div>':'')
       +raceGrid;
   } else if(step===2){
-    // ── ORIGIN ENGINE ──────────────────────────────────────────────
-    var ORIGINS = [
-      {id:'orphan_slums',label:'Orphan from the Slums',desc:'Raised by survival. No family, no connections — only hunger and instinct.'},
-      {id:'noble_exile',label:'Exiled Noble',desc:'You had everything. It was taken. You remember what it felt like to be above the world.'},
-      {id:'wandering_rogue',label:'Wandering Rogue',desc:'You belong to no one and nowhere. The road is home.'},
-      {id:'dungeon_survivor',label:'Dungeon Survivor',desc:'You were the only one who came back. You have seen what lives in the dark.'},
-      {id:'academy_student',label:'Academy Student',desc:'Theory before practice. You know things. Whether they will save your life is another matter.'},
-      {id:'reincarnated',label:'Reincarnated Soul',desc:'This is not your first life. Fragments of the last one surface at the worst times.'},
-      {id:'god_touched',label:'God-Touched',desc:'Something divine brushed against you. You've been... different since.'},
-      {id:'mercenary',label:'Mercenary',desc:'You sell your skills. Loyalty is a business arrangement.'},
-      {id:'cult_escapee',label:'Cult Escapee',desc:'You believed once. You do not anymore. They have not forgiven you.'},
-      {id:'failed_hero',label:'Failed Hero Candidate',desc:'You were chosen. You failed. The world moved on. You are still here.'},
-      {id:'commoner_talent',label:'Commoner with Impossible Talent',desc:'You should not be able to do what you can do. Nobody knows why yet.'},
-      {id:'custom',label:'Custom Origin',desc:'Write your own. Something the world hasn't seen before.'}
-    ];
-    var worldPowerSys = state.currentWorld && state.currentWorld.power_system_type || '';
-    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">🏠 Your Origin</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:6px">Where you came from shapes what the world expects of you — and what you expect of yourself.</p>'
-      +'<p style="color:#6b7280;font-size:0.78rem;margin-bottom:20px">Origin affects: starting reputation, known connections, hidden traits, and how NPCs read you.</p>'
-      +'<div style="display:grid;gap:8px">'
-      +ORIGINS.map(function(o){
-          var sel = c.origin === o.id;
-          return '<button class="origin-btn" data-origin="'+o.id+'" style="text-align:left;padding:14px 16px;border-radius:14px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.12)':'rgba(255,255,255,0.04)')+';color:white;cursor:pointer">'
-            +'<div style="font-weight:700;font-size:0.9rem;color:'+(sel?'#c084fc':'#e5e7eb')+'">'+o.label+'</div>'
-            +'<div style="font-size:0.75rem;color:#6b7280;margin-top:3px">'+o.desc+'</div>'
-            +'</button>';
-        }).join('')
-      +'</div>'
-      +(c.origin==='custom'?'<textarea id="char-origin-detail" rows="3" placeholder="Describe your unique origin..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;margin-top:12px;resize:vertical">'+esc(c.origin_detail||'')+'</textarea>':'');
-  } else if(step===3){
     body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Your Backstory</h2><p style="color:#9ca3af;margin-bottom:24px">Where did you come from?</p>'
       +'<textarea id="char-backstory" rows="6" placeholder="History, motivation, secrets..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.backstory)+'</textarea>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Location</label>'
       +'<input id="char-location" type="text" placeholder="Where does your story begin?" value="'+esc(c.current_location)+'" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;outline:none" />';
-  } else if(step===4){
+  } else if(step===3){
     var stats=c.stats||{STR:50,DEX:50,CON:50,INT:50,WIS:50,CHA:50},mastery=c.mastery||{STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10},lv=c.level||1,mBase=masteryStart(lv);
     var sr=STAT_LIST.map(function(s){var v=stats[s]||50,m=mastery[s]||10,g=statGrade(v),mg=statGrade(m),gc=statColor(g),mc=statColor(mg);return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px;margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-weight:700;font-size:0.9rem;letter-spacing:0.05em">'+s+'</span><div style="display:flex;gap:16px"><span style="font-size:0.75rem;color:#9ca3af">Val <strong style="color:'+gc+'">'+v+' ('+g+')</strong></span><span style="font-size:0.75rem;color:#9ca3af">Mast <strong style="color:'+mc+'">'+m+' ('+mg+')</strong></span></div></div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:0.7rem;color:#6b7280;width:44px">Stat</span><input class="stat-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+v+'" style="flex:1;accent-color:#9333ea" /></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:0.7rem;color:#6b7280;width:44px">Mastery</span><input class="mastery-slider" data-stat="'+s+'" type="range" min="10" max="200" value="'+m+'" style="flex:1;accent-color:#a855f7" /></div></div>';}).join('');
     var aiStatHint = state.draftChar.aiStatReasoning ? '<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.78rem;color:#6ee7b7">🤖 '+esc(state.draftChar.aiStatReasoning)+'</div>' : '';
@@ -4423,7 +4174,7 @@ function renderCreateChar() {
       +'</div>'
       +aiStatHint
       +'<div style="background:rgba(147,51,234,0.1);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.8rem;color:#c084fc">Level '+lv+' &mdash; mastery base: <strong>'+mBase+'</strong> ('+statGrade(mBase)+')</div>'+sr;
-  } else if(step===5){
+  } else if(step===4){
     // Render ability cards
     var abCards = state.draftChar.ability_cards || [];
     var abHtml = abCards.length > 0 ? abCards.map(function(ab,i){
@@ -4483,35 +4234,7 @@ function renderCreateChar() {
       +'<textarea id="char-abilities" rows="4" placeholder="Combat skills, spells, talents..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;margin-bottom:16px;outline:none">'+esc(c.abilities)+'</textarea>'
       +'<label style="font-size:0.875rem;color:#9ca3af;font-weight:500;display:block;margin-bottom:8px">Starting Inventory</label>'
       +'<textarea id="char-inventory" rows="3" placeholder="Items you carry..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 16px;color:white;font-size:0.875rem;outline:none">'+esc(c.inventory)+'</textarea>';
-  } else if(step===6){
-    // ── FLAW SYSTEM ────────────────────────────────────────────────
-    var PRESET_FLAWS = [
-      {id:'curiosity',name:'Curiosity Without Caution',mechanic:'WIS checks for "this seems dangerous" are at disadvantage. Once fascinated, the character must succeed a WIS check to stop investigating.'},
-      {id:'cant_lie',name:'Cannot Lie',mechanic:'Any deliberate spoken falsehood fails. NPCs who discover this either trust you completely or use it against you.'},
-      {id:'battle_hunger',name:'Battle Hunger',mechanic:'If no combat for 3+ scenes, CHA and WIS checks suffer -10% from restlessness. Combat gives +10% STR/DEX for that scene.'},
-      {id:'price_of_power',name:'Price of Power',mechanic:'Every use of the strongest ability costs 1 stat point from a random stat until rest. At 0, the character collapses.'},
-      {id:'emotional_mask',name:'Emotional Mask',mechanic:'CHA checks involving vulnerability, affection, or openness are at disadvantage. NPCs read you as cold, unreadable, or dangerous.'},
-      {id:'oathbound',name:'Oathbound',mechanic:'Breaking any spoken promise triggers a backlash — -10% to all stats until the promise is fulfilled or atoned for.'},
-      {id:'marked',name:'Marked by Something',mechanic:'An entity, faction, or force has noticed you. They send trouble periodically. The mark cannot be removed easily.'},
-      {id:'obsession',name:'Dangerous Obsession',mechanic:'One goal consumes you. The narrator may pull you toward it even when it is inconvenient. Resisting requires a WIS check.'},
-      {id:'known_face',name:'Famous Face',mechanic:'You cannot move anonymously in civilized areas. People have opinions about you before you speak.'},
-      {id:'custom_flaw',name:'Custom Flaw',mechanic:'You define it. Work with the narrator to give it real mechanical weight.'}
-    ];
-    body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">💀 Your Flaw</h2>'
-      +'<p style="color:#9ca3af;margin-bottom:6px">A flaw is not weakness — it is texture. It is why your character is interesting.</p>'
-      +'<p style="color:#6b7280;font-size:0.78rem;margin-bottom:20px">Flaws have mechanical weight. They affect choices, create consequences, and sometimes make things spectacular.</p>'
-      +(c.flaw?'<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:0.82rem;color:#fca5a5">Selected: <strong>'+esc(PRESET_FLAWS.find(function(f){return f.id===c.flaw;})||{name:c.flaw}).name+'</strong></div>':'')
-      +'<div style="display:grid;gap:8px">'
-      +PRESET_FLAWS.map(function(fl){
-          var sel = c.flaw === fl.id;
-          return '<button class="flaw-btn" data-flaw="'+fl.id+'" data-mechanic="'+esc(fl.mechanic)+'" style="text-align:left;padding:14px 16px;border-radius:14px;border:2px solid '+(sel?'#ef4444':'rgba(255,255,255,0.08)')+';background:'+(sel?'rgba(239,68,68,0.1)':'rgba(255,255,255,0.03)')+';color:white;cursor:pointer">'
-            +'<div style="font-weight:700;font-size:0.9rem;color:'+(sel?'#fca5a5':'#e5e7eb')+'">'+fl.name+'</div>'
-            +'<div style="font-size:0.72rem;color:#6b7280;margin-top:3px">'+fl.mechanic+'</div>'
-            +'</button>';
-        }).join('')
-      +'</div>'
-      +(c.flaw==='custom_flaw'?'<div style="margin-top:12px"><textarea id="char-flaw-detail" rows="2" placeholder="Describe your flaw and how it affects gameplay..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(c.flaw_detail||'')+'</textarea></div>':'');
-  } else if(step===7){
+  } else if(step===5){
     var isJourney = (c.progression_mode||'journey')==='journey';
     body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">Alignment</h2><p style="color:#9ca3af;margin-bottom:24px">Your moral compass shapes how the world reacts to you.</p><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+ALIGNMENTS.map(function(a){var sel=c.alignment===a;return '<button class="align-btn" data-align="'+a+'" style="padding:12px 8px;border-radius:12px;border:2px solid '+(sel?'#9333ea':'rgba(255,255,255,0.1)')+';background:'+(sel?'rgba(147,51,234,0.2)':'rgba(255,255,255,0.05)')+';color:'+(sel?'white':'#d1d5db')+';font-size:0.8rem;font-weight:500;cursor:pointer">'+a+'</button>';}).join('')+'</div>'
     +'<div style="margin-top:32px"><h3 style="font-size:1.1rem;font-weight:700;margin-bottom:6px">Progression Mode</h3><p style="color:#9ca3af;font-size:0.85rem;margin-bottom:16px">How do you want to grow in this world?</p>'
@@ -4528,7 +4251,7 @@ function renderCreateChar() {
     +'</button>'
     +'</div></div>';
   }
-  if(step===8){
+  if(step===6){
     var examples = [
       'I wake up in a strange inn with no memory of how I got here...',
       'Standing at the city gates, wanted poster in hand, looking for a way in...',
@@ -4582,28 +4305,6 @@ function attachCreateCharEvents() {
       render();
     });
   });
-  // Origin selection
-  document.querySelectorAll('.origin-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      collectCharStep();
-      state.draftChar.origin = btn.dataset.origin;
-      render();
-    });
-  });
-  // Flaw selection
-  document.querySelectorAll('.flaw-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      collectCharStep();
-      state.draftChar.flaw = btn.dataset.flaw;
-      state.draftChar.flaw_detail = btn.dataset.mechanic || '';
-      render();
-    });
-  });
-  // Collect origin detail / flaw detail textareas
-  var charOriginDet = document.getElementById('char-origin-detail');
-  if(charOriginDet) charOriginDet.addEventListener('input',function(){ state.draftChar.origin_detail=charOriginDet.value; });
-  var charFlawDet = document.getElementById('char-flaw-detail');
-  if(charFlawDet) charFlawDet.addEventListener('input',function(){ state.draftChar.flaw_detail=charFlawDet.value; });
   // AI generators
   var btnGenStats = document.getElementById('btn-ai-gen-stats');
   if(btnGenStats) btnGenStats.addEventListener('click', function(){ collectCharStep(); aiGenerateStats(); });
@@ -4770,96 +4471,6 @@ async function aiGenerateItems() {
     if(btn){ btn.textContent = '✨ AI Generate Items'; btn.disabled = false; }
   }
 }
-
-// ── LIVING CODEX ──────────────────────────────────────────────────────────────
-function renderCodex() {
-  var w = state.currentWorld;
-  var c = state.currentChar;
-  var codex = {};
-  try { codex = JSON.parse(w.world_codex || '{}'); } catch(e){}
-
-  // Build codex sections from world data
-  var sections = [
-    {
-      key:'world_laws', title:'World Laws', icon:'⚖️', color:'#a78bfa',
-      entries: [
-        w.magic_law ? {title:'Magic Law', text:w.magic_law, known:true} : null,
-        w.power_law ? {title:'Power Law', text:w.power_law, known:true} : null,
-        w.death_law ? {title:'Death Law', text:w.death_law, known:true} : null,
-        w.reality_law ? {title:'Reality Law', text:w.reality_law, known:true} : null,
-        w.rules_of_nature ? {title:'Rules of Nature', text:w.rules_of_nature, known:true} : null,
-      ].filter(Boolean)
-    },
-    {
-      key:'factions', title:'Factions & Powers', icon:'⚔️', color:'#f87171',
-      entries: (function(){
-        var facs = [];
-        try { facs = JSON.parse(w.factions||'[]'); } catch(e){ if(w.factions) facs=[{name:'Factions',goal:w.factions}]; }
-        return facs.map(function(f){
-          var rep = state.factionRep && state.factionRep[f.name];
-          var label = rep !== undefined ? (rep>=60?'Allied':rep>=20?'Friendly':rep>=-20?'Neutral':rep>=-60?'Hostile':'Sworn Enemy') : 'Unknown';
-          return {title:f.name, text:(f.goal||'')+(f.leader?' | Leader: '+f.leader:''), known:true, tag:label};
-        });
-      })()
-    },
-    {
-      key:'npcs', title:'Known Individuals', icon:'👤', color:'#60a5fa',
-      entries: (state.npcs||[]).map(function(n){
-        return {title:n.name, text:(n.notes||'')+(n.goals?' | Goal: '+n.goals:''), known:true, tag:n.attitude, tagColor:n.attitude==='friendly'?'#4ade80':n.attitude==='hostile'?'#f87171':'#fbbf24'};
-      })
-    },
-    {
-      key:'quests', title:'Quests & Objectives', icon:'📋', color:'#fbbf24',
-      entries: (state.quests||[]).map(function(q){
-        return {title:q.title, text:q.desc||'', known:true, tag:q.status, tagColor:q.status==='active'?'#60a5fa':q.status==='completed'?'#4ade80':'#f87171'};
-      })
-    },
-    {
-      key:'history', title:'History & Events', icon:'📜', color:'#c084fc',
-      entries: [
-        w.historical_events ? {title:'Historical Record', text:w.historical_events, known:true} : null,
-        w.current_conflicts ? {title:'Active Conflicts', text:w.current_conflicts, known:true} : null,
-      ].filter(Boolean)
-    },
-    {
-      key:'world_secrets', title:'Secrets & Mysteries', icon:'🌑', color:'#6b7280',
-      entries: w.secrets_mysteries ? [{title:'Known Mysteries', text:'[ Redacted — discover in play ]', known:false}] : []
-    },
-    {
-      key:'player_titles', title:'Your Titles', icon:'🏆', color:'#f59e0b',
-      entries: (function(){
-        var titles = [];
-        try { titles = JSON.parse(c && c.titles || '[]'); } catch(e){}
-        return titles.map(function(t){ return {title:t.name||t, text:t.desc||'', known:true}; });
-      })()
-    }
-  ];
-
-  var body = sections.map(function(sec){
-    if(sec.entries.length === 0) return '';
-    return '<div style="margin-bottom:20px">'
-      +'<div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:'+sec.color+';margin-bottom:8px">'+sec.icon+' '+sec.title+'</div>'
-      +sec.entries.map(function(e){
-        return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px 12px;margin-bottom:6px">'
-          +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(e.text?'4px':'0')+'">'
-          +'<span style="font-weight:600;font-size:0.82rem;color:'+(e.known?'#e5e7eb':'#4b5563')+'">'+esc(e.title)+'</span>'
-          +(e.tag?'<span style="font-size:0.65rem;padding:2px 7px;border-radius:20px;border:1px solid rgba(255,255,255,0.1);color:'+(e.tagColor||'#9ca3af')+'">'+e.tag+'</span>':'')
-          +'</div>'
-          +(e.text?'<div style="font-size:0.75rem;color:'+(e.known?'#9ca3af':'#374151')+';line-height:1.5">'+esc(e.text)+'</div>':'')
-          +'</div>';
-      }).join('')
-      +'</div>';
-  }).join('');
-
-  return '<div style="position:fixed;top:0;right:0;height:100vh;width:360px;background:rgba(5,10,25,0.98);border-left:1px solid rgba(16,185,129,0.3);z-index:100;display:flex;flex-direction:column;overflow:hidden">'
-    +'<div style="padding:16px;border-bottom:1px solid rgba(16,185,129,0.2);display:flex;align-items:center;justify-content:space-between">'
-    +'<h2 style="font-size:1rem;font-weight:700;color:#6ee7b7">📚 Living Codex</h2>'
-    +'<button id="btn-close-codex" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.25rem">✕</button>'
-    +'</div>'
-    +'<div style="flex:1;overflow-y:auto;padding:16px">'+body+'</div>'
-    +'</div>';
-}
-
 function renderJournal() {
   var attC = {friendly:'#4ade80',neutral:'#facc15',hostile:'#f87171'};
   var questC = {active:'#60a5fa',completed:'#4ade80',failed:'#f87171'};
@@ -5000,7 +4611,7 @@ function renderPlay() {
     +(state.showCrafting ? renderCraftingPanel() : '')
     +(state.showInventory ? renderInventoryPanel() : '')
     +(state.showShop ? renderShopPanel() : '')
-    +(state.showJournal?renderJournal():'')+(state.showCodex?renderCodex():'')
+    +(state.showJournal?renderJournal():'')
     +'<div style="display:flex;flex-direction:column;height:100vh;background:#030712;'+mainStyle+'">'
     // Header
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.5);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
@@ -5014,8 +4625,6 @@ function renderPlay() {
     +'<button id="btn-toggle-crafting" style="font-size:0.75rem;background:'+(state.showCrafting?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">⚒️</button>'
     +'<button id="btn-toggle-inv" style="font-size:0.75rem;background:'+(state.showInventory?'rgba(250,204,21,0.2)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">🎒 <span style=\'color:#facc15\'>'+state.gold+'g</span></button>'
     +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
-    +'<button id="btn-toggle-codex" style="font-size:0.75rem;background:'+(state.showCodex?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📚 Codex</button>'
-    +(state.currentWorld&&state.currentWorld.world_stability!==undefined?'<span style="font-size:0.65rem;color:'+(state.currentWorld.world_stability>=80?'#4ade80':state.currentWorld.world_stability>=50?'#fbbf24':'#f87171')+'">⚖️ '+state.currentWorld.world_stability+'%</span>':'')
     +'<button id="btn-toggle-lore-fix" title="Correct a lore inconsistency" style="font-size:0.75rem;background:'+(state.showLoreFix?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">✏️ Lore'+(state.loreCorrections&&state.loreCorrections.length>0?'<span style="background:#ef4444;color:white;border-radius:9999px;padding:0 5px;font-size:0.65rem;margin-left:4px">'+state.loreCorrections.length+'</span>':'')+'</button>'
     +'</div></div>'
     +statsBar+combatBars
@@ -5096,9 +4705,6 @@ function attachPlayEvents() {
   var tcr=document.getElementById('btn-toggle-crafting');
   if(tcr) tcr.addEventListener('click',function(){ state.showCrafting=!state.showCrafting; render(); });
   if(tj) tj.addEventListener('click',function(){state.showJournal=!state.showJournal;render();scrollToBottom();});
-  var tc=document.getElementById('btn-toggle-codex'),cc=document.getElementById('btn-close-codex');
-  if(tc) tc.addEventListener('click',function(){state.showCodex=!state.showCodex;render();scrollToBottom();});
-  if(cc) cc.addEventListener('click',function(){state.showCodex=false;render();});
   if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
   // Lore Correction panel
   var tlf = document.getElementById('btn-toggle-lore-fix');
