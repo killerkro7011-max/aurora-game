@@ -3447,6 +3447,7 @@ function renderAgentImport() {
 }
 
 function renderImportWorld() {
+  var overlay = renderExpandPromptOverlay();
   var cats = [
     { id:'books', label:'\U0001f4d6 Books', color:'#60a5fa', items:['Lord of the Rings','Dune','Harry Potter','Narnia','The Wheel of Time','A Song of Ice and Fire','The Name of the Wind','Mistborn','The Stormlight Archive','Discworld','His Dark Materials','The Witcher Saga','Eragon','The Silmarillion','Conan the Barbarian'] },
     { id:'movies', label:'\U0001f3a5 Movies & TV', color:'#f472b6', items:['Star Wars','Game of Thrones','The Witcher','Avatar: The Last Airbender','The Mandalorian','House of the Dragon','Stranger Things','Vikings','Outlander','The Last Kingdom','Black Sails','Spartacus','Merlin','Shadow and Bone','The Wheel of Time (Amazon)'] },
