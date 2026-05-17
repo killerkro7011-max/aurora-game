@@ -4229,6 +4229,10 @@ function attachCreateWorldEvents() {
   });
   var bcc=document.getElementById('btn-consistency-check');
   if(bcc) bcc.addEventListener('click',function(){runConsistencyCheck();});
+  var bgc=document.getElementById('btn-gen-contract');
+  if(bgc) bgc.addEventListener('click',function(){aiGenerateWorldContract();});
+  var bgs=document.getElementById('btn-gen-seeds');
+  if(bgs) bgs.addEventListener('click',function(){aiGenerateStorySeeds();});
   attachVesperEvents('world');
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
@@ -4693,6 +4697,63 @@ async function aiGenerateItems() {
     render();
   } catch(e) {
     if(btn){ btn.textContent = '✨ AI Generate Items'; btn.disabled = false; }
+  }
+}
+
+// ── WORLD CONTRACT & SEEDS GENERATION ──────────────────────────────────────────
+async function aiGenerateWorldContract() {
+  var w = state.draftWorld;
+  var btn = document.getElementById('btn-gen-contract');
+  if(btn){ btn.textContent = '⏳ Sealing contract...'; btn.disabled = true; }
+  var laws = '';
+  if(w.magic_law) laws += 'MAGIC LAW: ' + w.magic_law + '\n';
+  if(w.death_law) laws += 'DEATH LAW: ' + w.death_law + '\n';
+  if(w.reality_law) laws += 'REALITY LAW: ' + w.reality_law + '\n';
+  if(w.power_law) laws += 'POWER LAW: ' + w.power_law + '\n';
+  if(w.power_system_type) laws += 'POWER SYSTEM: ' + w.power_system_type + (w.rank_names ? ' | Ranks: ' + w.rank_names : '') + '\n';
+  var prompt = 'You are a world-contract scribe. Generate a solemn, binding World Contract for this world.\n\n'
+    + 'World: ' + (w.name || 'Unnamed') + '\n'
+    + 'Setting: ' + (w.setting || '') + '\n'
+    + 'Description: ' + (w.description || '') + '\n'
+    + 'Laws:\n' + (laws || 'No laws defined yet.\n') + '\n'
+    + 'Write the contract as a serious, immersive in-world document. Use formal archaic tone. Include:\n'
+    + '- A preamble establishing the world\'s nature\n'
+    + '- Each law stated as a binding article\n'
+    + '- A closing oath the player must accept\n'
+    + 'Keep it under 300 words. No markdown headers — just flowing formal prose with line breaks.';
+  try {
+    var text = await callAI('You are a world-building scribe. Write a binding narrative contract document.', prompt, 600);
+    state.draftWorld.world_contract_text = text.trim();
+    state.draftWorld.world_contract_signed = false;
+    render();
+  } catch(e) {
+    if(btn){ btn.textContent = '✨ Generate World Contract'; btn.disabled = false; }
+    console.error('Contract gen failed:', e);
+  }
+}
+
+async function aiGenerateStorySeeds() {
+  var w = state.draftWorld;
+  var btn = document.getElementById('btn-gen-seeds');
+  if(btn){ btn.textContent = '⏳ Growing seeds...'; btn.disabled = true; }
+  var prompt = 'Generate 5 story seed hooks for this world. Return ONLY a valid JSON array, no markdown.\n\n'
+    + 'World: ' + (w.name || 'Unnamed') + '\n'
+    + 'Setting: ' + (w.setting || '') + '\n'
+    + 'Description: ' + (w.description || '') + '\n'
+    + (w.lore ? 'Lore: ' + w.lore.slice(0, 300) + '\n' : '')
+    + (w.factions ? 'Factions: ' + String(w.factions).slice(0, 200) + '\n' : '')
+    + (w.magic_law ? 'Magic Law: ' + w.magic_law + '\n' : '')
+    + (w.tone_themes ? 'Tone: ' + w.tone_themes + '\n' : '') + '\n'
+    + 'Each seed: a one-sentence intriguing hook a player could chase. Make them specific to THIS world.\n'
+    + 'Return: ["seed 1","seed 2","seed 3","seed 4","seed 5"]';
+  try {
+    var raw = await callAI('You are a story hook writer. Return ONLY valid JSON array.', prompt, 400);
+    var parsed = JSON.parse(raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim());
+    state.draftWorld.story_seeds = JSON.stringify(parsed);
+    render();
+  } catch(e) {
+    if(btn){ btn.textContent = 'Generate Seeds'; btn.disabled = false; }
+    console.error('Seeds gen failed:', e);
   }
 }
 
