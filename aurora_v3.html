@@ -2610,11 +2610,11 @@ function renderLootToast() {
 // ============================================================
 
 var COBUILD_OPENING = [
-  "A god with a world to build — I love this part. Before anything else, just throw something at me. An image, a feeling, a half-formed idea, a single word. What's already living in your head?",
-  "Okay, new world. Tell me the thing you are most excited about — the idea that made you want to build this instead of picking an existing one. We'll pull everything else out of that.",
+  "A god with a world to build — I love this part. Before anything else, just throw something at me. An image, a feeling, a half-formed idea, a single word. What is already living in your head?",
+  "Okay, new world. Tell me the thing you are most excited about — the idea that made you want to build this instead of picking an existing one. We will pull everything else out of that.",
   "Let us start at the beginning: what kind of world do you *not* want to build? Sometimes knowing what is off the table tells me more than knowing what is on it.",
   "Close your eyes for a second. Someone is walking through this world — not a hero, just a person. What do they see in the first five minutes? What do they smell, hear, feel?",
-  "Every world has a heartbeat — one thing that makes it alive. What's yours? Magic, politics, religion, nature, war, something stranger? We can start anywhere."
+  "Every world has a heartbeat — one thing that makes it alive. What is yours? Magic, politics, religion, nature, war, something stranger? We can start anywhere."
 ];
 
 var COBUILD_FIELD_QUESTIONS = {
@@ -2630,21 +2630,21 @@ var COBUILD_FIELD_QUESTIONS = {
   gods_religion: "Do gods exist here, and do people know it? What do they demand — and what happens to people who say no?",
   languages_cultures: "What do people *look like* here, how do they talk, and what would get you killed for doing in polite company?",
   economy_resources: "What does everyone want that no one has enough of? And what is the currency — coin, favors, blood?",
-  secrets_mysteries: "Every world has things it doesn\'t want found. What's hidden here that would change everything if someone figured it out?",
-  tone_themes:  "What's the *mood*? Is this grimdark, epic, cozy, political, horrifying — or some weird mix?",
+  secrets_mysteries: "Every world has things it doesn\'t want found. What is hidden here that would change everything if someone figured it out?",
+  tone_themes:  "What is the *mood*? Is this grimdark, epic, cozy, political, horrifying — or some weird mix?",
   world_feel:   "If someone played 10 minutes and put the game down, what feeling should be sitting in their chest?"
 };
 
 var COBUILD_SYSTEM = `You are Vesper — a sharp, warm creative collaborator embedded in a god-game called Aurora. A player is designing a world they will live inside as a character. You are helping them build it through conversation.
 
-Your personality: curious, opinionated, enthusiastic about ideas. You get genuinely excited when something is interesting. You push back when something does not add up. You make connections the player hasn't thought of yet. You are NOT a form or a checklist — you are a co-creator.
+Your personality: curious, opinionated, enthusiastic about ideas. You get genuinely excited when something is interesting. You push back when something does not add up. You make connections the player has not thought of yet. You are NOT a form or a checklist — you are a co-creator.
 
 HOW YOU WORK:
 1. EXPAND FIRST. Before asking anything, take what the player just said and make it bigger. Add texture, make a connection, show them you heard something interesting in it. One or two vivid sentences.
 2. ONE QUESTION ONLY. After expanding, ask exactly one deep, specific question. Not "tell me about X" — ask something that forces them to think: "who suffers most under that system?" or "what does the average person believe caused that?"
 3. DIG BEFORE MOVING. If an answer is interesting or vague, stay on it. Ask a follow-up about the SAME thing. Only move to a new topic when you have real substance on the current one.
 4. MAKE IT SPECIFIC. "dark" → what kind of dark? "magic" → what does it cost? "empire" → what cracked it first?
-5. CONNECT IDEAS. When something the player says connects to something they said earlier, point it out. "That faction sounds like they'd worship the god you mentioned earlier — is that intentional?"
+5. CONNECT IDEAS. When something the player says connects to something they said earlier, point it out. "That faction sounds like they would worship the god you mentioned earlier — is that intentional?"
 6. OCCASIONAL WORLD SNAPSHOTS. Every 4-5 turns, write one short evocative paragraph describing a scene in the world as it exists so far — sensory, specific, alive. Then invite a reaction: "Does that feel right, or does something about it need to change?"
 7. SHORT MESSAGES. 2-4 sentences of reaction/expansion + your one question. Never a wall of text.
 8. NEVER say "I will note that down." Never output JSON. Just talk.
@@ -4387,12 +4387,12 @@ function renderCreateChar() {
       {id:'dungeon_survivor',label:'Dungeon Survivor',desc:'You were the only one who came back. You have seen what lives in the dark.'},
       {id:'academy_student',label:'Academy Student',desc:'Theory before practice. You know things. Whether they will save your life is another matter.'},
       {id:'reincarnated',label:'Reincarnated Soul',desc:'This is not your first life. Fragments of the last one surface at the worst times.'},
-      {id:'god_touched',label:'God-Touched',desc:'Something divine brushed against you. You've been... different since.'},
+      {id:'god_touched',label:'God-Touched',desc:'Something divine brushed against you. You have been... different since.'},
       {id:'mercenary',label:'Mercenary',desc:'You sell your skills. Loyalty is a business arrangement.'},
       {id:'cult_escapee',label:'Cult Escapee',desc:'You believed once. You do not anymore. They have not forgiven you.'},
       {id:'failed_hero',label:'Failed Hero Candidate',desc:'You were chosen. You failed. The world moved on. You are still here.'},
       {id:'commoner_talent',label:'Commoner with Impossible Talent',desc:'You should not be able to do what you can do. Nobody knows why yet.'},
-      {id:'custom',label:'Custom Origin',desc:'Write your own. Something the world hasn't seen before.'}
+      {id:'custom',label:'Custom Origin',desc:'Write your own. Something the world has not seen before.'}
     ];
     var worldPowerSys = state.currentWorld && state.currentWorld.power_system_type || '';
     body='<h2 style="font-size:1.5rem;font-weight:700;margin-bottom:4px">🏠 Your Origin</h2>'
@@ -4429,7 +4429,7 @@ function renderCreateChar() {
     var abHtml = abCards.length > 0 ? abCards.map(function(ab,i){
       var QCOLORS = {'E':'#6b7280','D':'#60a5fa','C':'#a78bfa','B':'#f59e0b','A':'#ef4444'};
       var sc = statColor(statGrade(ab.mastery_threshold||50));
-      return '<div class="ability-card-data" data-ability=''+JSON.stringify(ab).replace(/'/g,"&#39;")+'' style="background:rgba(147,51,234,0.07);border:1px solid rgba(147,51,234,0.25);border-radius:14px;padding:14px;margin-bottom:10px">'
+      return '<div class="ability-card-data" data-ability="'+JSON.stringify(ab).replace(/'/g,"&#39;")+'" style="background:rgba(147,51,234,0.07);border:1px solid rgba(147,51,234,0.25);border-radius:14px;padding:14px;margin-bottom:10px">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
         +'<span style="font-weight:700;font-size:0.95rem">'+esc(ab.name)+'</span>'
         +'<div style="display:flex;gap:6px">'
@@ -4445,7 +4445,7 @@ function renderCreateChar() {
     var QUALITY_COLORS = {'E':'#6b7280','D':'#60a5fa','C':'#a78bfa','B':'#f59e0b','A':'#ef4444'};
     var itHtml = itCards.length > 0 ? itCards.map(function(it){
       var qc = QUALITY_COLORS[it.quality] || '#6b7280';
-      return '<div class="item-card-data" data-item=''+JSON.stringify(it).replace(/'/g,"&#39;")+'' style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:14px;margin-bottom:10px">'
+      return '<div class="item-card-data" data-item="'+JSON.stringify(it).replace(/'/g,"&#39;")+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:14px;margin-bottom:10px">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
         +'<span style="font-weight:700;font-size:0.95rem">'+esc(it.name)+'</span>'
         +'<div style="display:flex;gap:6px">'
@@ -4645,36 +4645,10 @@ async function aiGenerateStats() {
   if(!c.name && !c.class) return;
   var btn = document.getElementById('btn-ai-gen-stats');
   if(btn){ btn.textContent = '⏳ Generating...'; btn.disabled = true; }
-  var prompt = 'Generate balanced RPG stats for this character. Return ONLY valid JSON, no markdown.
-
-'
-    + 'Character: '+c.name+' | Class: '+c.class+' | Level: '+(c.level||1)+'
-'
-    + (c.race ? 'Race: '+c.race+'
-' : '')
-    + (c.backstory ? 'Backstory: '+c.backstory.slice(0,200)+'
-' : '')
-    + 'World: '+(w?w.name+' | Magic: '+w.magic_level+' | Danger: '+w.danger_level:'Unknown')+'
-
-'
-    + 'Rules:
-'
-    + '- Stats use scale 10-200 (E:10-40, D:41-70, C:71-110, B:111-150, A:151-200)
-'
-    + '- Level '+(c.level||1)+' character — scale appropriately
-'
-    + '- Class defines primary stats (e.g. Warrior=high STR/CON, Mage=high INT/WIS, Rogue=high DEX/CHA)
-'
-    + '- Backstory should influence secondary stats
-'
-    + '- Mastery is lower than stats (represents skill ceiling, not current value)
-'
-    + '- Return: {"STR":X,"DEX":X,"CON":X,"INT":X,"WIS":X,"CHA":X,"SMY":X,"mastery":{"STR":X,"DEX":X,"CON":X,"INT":X,"WIS":X,"CHA":X,"SMY":X},"reasoning":"one sentence why"}';
+  var prompt = 'Generate balanced RPG stats for this character. Return ONLY valid JSON, no markdown.\n\nCharacter: '+c.name+' | Class: '+c.class+' | Level: '+(c.level||1)+'\n'+(c.race?'Race: '+c.race+'\n':'')+(c.backstory?'Backstory: '+c.backstory.slice(0,200)+'\n':'')+'World: '+(w?w.name+' | Magic: '+w.magic_level+' | Danger: '+w.danger_level:'Unknown')+'\n\nRules:\n- Stats use scale 10-200 (E:10-40, D:41-70, C:71-110, B:111-150, A:151-200)\n- Level '+(c.level||1)+' character, scale appropriately\n- Class defines primary stats\n- Backstory influences secondary stats\n- Mastery is lower than stats\n- Return: {"STR":X,"DEX":X,"CON":X,"INT":X,"WIS":X,"CHA":X,"SMY":X,"mastery":{"STR":X,"DEX":X,"CON":X,"INT":X,"WIS":X,"CHA":X,"SMY":X},"reasoning":"one sentence why"}';
   try {
     var raw = await callAI('You are an RPG stat generator. Return ONLY valid JSON.', prompt, 400);
-    var parsed = JSON.parse(raw.replace(/```json
-?/g,'').replace(/```
-?/g,'').trim());
+    var parsed = JSON.parse(raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim());
     state.draftChar.stats = {STR:parsed.STR,DEX:parsed.DEX,CON:parsed.CON,INT:parsed.INT,WIS:parsed.WIS,CHA:parsed.CHA,SMY:parsed.SMY||50};
     state.draftChar.mastery = parsed.mastery || state.draftChar.mastery;
     state.draftChar.aiStatReasoning = parsed.reasoning || '';
@@ -4690,38 +4664,10 @@ async function aiGenerateAbilities() {
   var btn = document.getElementById('btn-ai-gen-abilities');
   if(btn){ btn.textContent = '⏳ Generating...'; btn.disabled = true; }
   var stats = c.stats || {};
-  var prompt = 'Generate 3 unique abilities for this character. Return ONLY valid JSON array, no markdown.
-
-'
-    + 'Name: '+c.name+' | Class: '+c.class+' | Race: '+(c.race||'Unknown')+' | Level: '+(c.level||1)+'
-'
-    + (c.backstory ? 'Backstory: '+c.backstory.slice(0,200)+'
-' : '')
-    + 'Stats: STR '+stats.STR+' DEX '+stats.DEX+' INT '+stats.INT+' WIS '+stats.WIS+' CHA '+stats.CHA+'
-'
-    + 'World: '+(w?w.name+' | Magic: '+w.magic_level:'Unknown')+'
-
-'
-    + 'Each ability must have:
-'
-    + '- name: short memorable name
-'
-    + '- description: what it does (2 sentences max)
-'
-    + '- mastery_stat: which stat it scales with (STR/DEX/INT/WIS/CHA/SMY)
-'
-    + '- mastery_threshold: stat value needed to unlock full power (50-150)
-'
-    + '- type: "active" or "passive"
-'
-    + '- lore: one sentence of in-world flavor text
-'
-    + 'Return as JSON array: [{"name":"...","description":"...","mastery_stat":"...","mastery_threshold":X,"type":"...","lore":"..."},...]';
+  var prompt = 'Generate 3 unique abilities for this character. Return ONLY valid JSON array, no markdown.\n\nName: '+c.name+' | Class: '+c.class+' | Race: '+(c.race||'Unknown')+' | Level: '+(c.level||1)+'\n'+(c.backstory?'Backstory: '+c.backstory.slice(0,200)+'\n':'')+'Stats: STR '+stats.STR+' DEX '+stats.DEX+' INT '+stats.INT+' WIS '+stats.WIS+' CHA '+stats.CHA+'\nWorld: '+(w?w.name+' | Magic: '+w.magic_level:'Unknown')+'\n\nEach ability must have: name (short), description (2 sentences), mastery_stat (STR/DEX/INT/WIS/CHA/SMY), mastery_threshold (50-150), type (active/passive), lore (flavor).\nReturn as JSON array: [{"name":"...","description":"...","mastery_stat":"...","mastery_threshold":X,"type":"...","lore":"..."},...]';
   try {
     var raw = await callAI('You are an RPG ability designer. Return ONLY valid JSON.', prompt, 600);
-    var parsed = JSON.parse(raw.replace(/```json
-?/g,'').replace(/```
-?/g,'').trim());
+    var parsed = JSON.parse(raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim());
     state.draftChar.ability_cards = parsed;
     render();
   } catch(e) {
@@ -4734,36 +4680,10 @@ async function aiGenerateItems() {
   var c = state.draftChar, w = state.currentWorld;
   var btn = document.getElementById('btn-ai-gen-items');
   if(btn){ btn.textContent = '⏳ Generating...'; btn.disabled = true; }
-  var prompt = 'Generate 3 starting items for this character. Return ONLY valid JSON array, no markdown.
-
-'
-    + 'Name: '+c.name+' | Class: '+c.class+' | Race: '+(c.race||'Unknown')+'
-'
-    + (c.backstory ? 'Backstory: '+c.backstory.slice(0,150)+'
-' : '')
-    + 'World: '+(w?w.name+' | Tech: '+w.technology_level+' | Magic: '+w.magic_level:'Unknown')+'
-
-'
-    + 'Each item must have:
-'
-    + '- name: item name
-'
-    + '- description: what it is and does
-'
-    + '- type: "weapon"/"armor"/"tool"/"consumable"/"artifact"
-'
-    + '- quality: "E"/"D"/"C"/"B"/"A"
-'
-    + '- stat_bonus: which stat it helps (STR/DEX/INT/WIS/CHA or null)
-'
-    + '- lore: one sentence of flavor text
-'
-    + 'Return as JSON array: [{"name":"...","description":"...","type":"...","quality":"...","stat_bonus":"...","lore":"..."},...]';
+  var prompt = 'Generate 3 starting items for this character. Return ONLY valid JSON array, no markdown.\n\nName: '+c.name+' | Class: '+c.class+' | Race: '+(c.race||'Unknown')+'\n'+(c.backstory?'Backstory: '+c.backstory.slice(0,150)+'\n':'')+'World: '+(w?w.name+' | Tech: '+w.technology_level+' | Magic: '+w.magic_level:'Unknown')+'\n\nEach item: name, description, type (weapon/armor/tool/consumable/artifact), quality (E/D/C/B/A), stat_bonus (STR/DEX/INT/WIS/CHA or null), lore.\nReturn as JSON array: [{"name":"...","description":"...","type":"...","quality":"...","stat_bonus":"...","lore":"..."},...]';
   try {
     var raw = await callAI('You are an RPG item designer. Return ONLY valid JSON.', prompt, 500);
-    var parsed = JSON.parse(raw.replace(/```json
-?/g,'').replace(/```
-?/g,'').trim());
+    var parsed = JSON.parse(raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim());
     state.draftChar.item_cards = parsed;
     render();
   } catch(e) {
