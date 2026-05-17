@@ -137,6 +137,9 @@ let state = {
   cobuildThinking: false,
   cobuildDraft: {},      // world fields being assembled during chat
   cobuildDone: false,    // true when world is fully built and ready to review
+  // Always initialize draftWorld so renderCreateWorld never crashes on undefined
+  draftWorld: null,      // set to freshWorld() when entering world creator
+  draftChar: {},         // set when entering character creator
 };
 
 function devTesterWorld() {
@@ -3868,6 +3871,7 @@ function renderExpandPromptOverlay() {
 }
 
 function renderCreateWorld() {
+  if (!state.draftWorld) state.draftWorld = freshWorld();
   var step=state.worldStep, w=state.draftWorld;
   var overlay=renderExpandPromptOverlay();
   var content='';
