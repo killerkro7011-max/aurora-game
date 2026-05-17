@@ -4243,6 +4243,42 @@ function attachCreateWorldEvents() {
   if(bgc) bgc.addEventListener('click',function(){aiGenerateWorldContract();});
   var bgs=document.getElementById('btn-gen-seeds');
   if(bgs) bgs.addEventListener('click',function(){aiGenerateStorySeeds();});
+  
+  // Genre buttons (step 7)
+  document.querySelectorAll('.genre-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      state.draftWorld.genre_tone = b.dataset.genre;
+      render();
+    });
+  });
+  
+  // Scale buttons (step 7)
+  document.querySelectorAll('.scale-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      state.draftWorld.world_scale = b.dataset.scale;
+      render();
+    });
+  });
+  
+  // Theme buttons (step 7)
+  document.querySelectorAll('.theme-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      var themes = state.draftWorld.tone_themes ? state.draftWorld.tone_themes.split(',').map(t=>t.trim()) : [];
+      var idx = themes.indexOf(b.dataset.theme);
+      if(idx===-1) themes.push(b.dataset.theme);
+      else themes.splice(idx,1);
+      state.draftWorld.tone_themes = themes.join(', ');
+      render();
+    });
+  });
+  
+  // Tone buttons (step 6)
+  document.querySelectorAll('.tone-btn').forEach(function(b){
+    b.addEventListener('click',function(){
+      state.draftWorld.tone = b.dataset.tone;
+      render();
+    });
+  });
   attachVesperEvents('world');
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
@@ -4292,6 +4328,8 @@ function collectWorldStep() {
   var pl=document.getElementById('world-power-law');if(pl)state.draftWorld.power_law=pl.value;
   var rn=document.getElementById('world-rank-names');if(rn)state.draftWorld.rank_names=rn.value;
   var gc=document.getElementById('world-genre-custom');if(gc&&gc.value.trim())state.draftWorld.genre_tone=gc.value.trim();
+  var ws=document.getElementById('world-scale-input');if(ws)state.draftWorld.world_scale=ws.value;
+  var ct=document.getElementById('world-core-themes-input');if(ct)state.draftWorld.core_themes=ct.value;
 }
 
 function renderWorldDetail() {
