@@ -4166,11 +4166,11 @@ function attachCreateWorldEvents() {
   document.querySelectorAll('.genre-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.genre_tone=b.dataset.genre;render();});});
   document.querySelectorAll('.scale-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld.world_scale=b.dataset.scale;render();});});
   document.querySelectorAll('.theme-btn').forEach(function(b){b.addEventListener('click',function(){
-    var themes=state.draftWorld.core_themes||'';
+    var themes=state.draftWorld.core_theme||'';
     var arr=themes?themes.split(',').map(function(x){return x.trim();}).filter(Boolean):[];
     var t=b.dataset.theme; var idx=arr.indexOf(t);
     if(idx===-1){arr.push(t);}else{arr.splice(idx,1);}
-    state.draftWorld.core_themes=arr.join(', ');
+    state.draftWorld.core_theme=arr.join(', ');
     render();
   });});
   document.querySelectorAll('.tone-btn').forEach(function(b){b.addEventListener('click',function(){
@@ -4328,8 +4328,7 @@ function collectWorldStep() {
   var pl=document.getElementById('world-power-law');if(pl)state.draftWorld.power_law=pl.value;
   var rn=document.getElementById('world-rank-names');if(rn)state.draftWorld.rank_names=rn.value;
   var gc=document.getElementById('world-genre-custom');if(gc&&gc.value.trim())state.draftWorld.genre_tone=gc.value.trim();
-  var ws=document.getElementById('world-scale-input');if(ws)state.draftWorld.world_scale=ws.value;
-  var ct=document.getElementById('world-core-themes-input');if(ct)state.draftWorld.core_themes=ct.value;
+  // world_scale, core_theme, genre_tone, power_system_type — set reactively via button click handlers
 }
 
 function renderWorldDetail() {
