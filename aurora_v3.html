@@ -325,7 +325,7 @@ async function generateLoot(context) {
   }
   var slotsLeft = MAX_SLOTS - inv.length;
   var sys = 'You are a loot generator for a narrative RPG. Return ONLY a valid JSON array of 1-2 item objects.';
-  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Context: ' + context + '. Generate 1-' + Math.min(2, slotsLeft) + ' contextually appropriate items. Each: {"name":string,"rarity":"common|uncommon|rare|epic|legendary","type":"weapon|armor|consumable|tool|misc|material","effect":"brief effect","value":gold_number}. Match the world setting. Return ONLY the JSON array, no other text.';
+  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Context: ' + context + '. Generate 1-' + Math.min(2, slotsLeft) + ' contextually appropriate items. Each: {"name":string,"rarity":"common|uncommon|rare|epic|legendary","type":"weapon|armor|consumable|tool|misc|material","effect":"brief effect","value":gold_number,"statBonus":{"STR":0,"DEX":0} (only include relevant stats with non-zero values for weapons/armor/tools, omit for consumables/materials)}. Match the world setting — names and effects should feel native to it. Return ONLY the JSON array, no other text.';
   try {
     var raw = await callAI(sys, prompt, 300);
     var cleaned = raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim();
@@ -348,7 +348,7 @@ async function generateShop(type) {
   state.shopLoading = true; state.showShop = true; render();
   var c = state.currentChar, w = state.currentWorld;
   var sys = 'You are a shop inventory generator for a narrative RPG. Return ONLY a valid JSON array of exactly 6 items.';
-  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ', tech: ' + w.technology_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Player gold: ' + (state.gold||0) + '. Shop type: ' + (type||'general') + '. Generate exactly 6 items for sale. Each: {"name":string,"rarity":"common|uncommon|rare","type":"weapon|armor|consumable|tool|misc","effect":"brief description","value":price_1_to_50}. Return ONLY the JSON array.';
+  var prompt = 'World: ' + (w ? w.name + ' (' + w.setting + ', magic: ' + w.magic_level + ', tech: ' + w.technology_level + ')' : 'unknown') + '. Character: ' + (c ? c.name + ' (' + c.class + ' lv.' + c.level + ')' : 'unknown') + '. Player gold: ' + (state.gold||0) + '. Shop type: ' + (type||'general') + '. Generate exactly 6 items for sale. Each: {"name":string,"rarity":"common|uncommon|rare","type":"weapon|armor|consumable|tool|misc","effect":"brief description","value":price_1_to_50,"statBonus":{"STR":0} (only relevant non-zero stats for weapons/armor, omit for others)}. Items should fit the world setting — culturally appropriate names. Return ONLY the JSON array.';
   try {
     var raw = await callAI(sys, prompt, 400);
     var cleaned = raw.replace(/```json[\r\n]*/g,'').replace(/```[\r\n]*/g,'').trim();
@@ -2628,6 +2628,78 @@ async function refineSkill(skillId) {
   }
 }
 
+
+function renderEquipmentTab() {
+  var inv = getInventory();
+  var c = state.currentChar;
+  var equipped = inv.filter(function(i){ return i.equipped; });
+  var slots = {weapon:'⚔️ Weapon',armor:'🛡️ Armor',tool:'🔧 Tool'};
+
+  // Compute active stat bonuses from equipped items
+  var bonuses = {};
+  equipped.forEach(function(item){
+    if (item.statBonus) {
+      Object.keys(item.statBonus).forEach(function(stat){
+        bonuses[stat] = (bonuses[stat]||0) + item.statBonus[stat];
+      });
+    }
+  });
+
+  var statBonusHtml = Object.keys(bonuses).length > 0
+    ? '<div style="margin-top:14px;padding:10px 12px;border-radius:10px;background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.2)">'
+      + '<div style="font-size:0.68rem;font-weight:700;color:#9ca3af;letter-spacing:0.07em;margin-bottom:8px">ACTIVE GEAR BONUSES</div>'
+      + Object.keys(bonuses).map(function(stat){
+          var val = bonuses[stat];
+          return '<div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:4px">'
+            +'<span style="color:#c4b5fd">'+stat+'</span>'
+            +'<span style="color:'+(val>0?'#4ade80':'#f87171')+';font-weight:700">'+(val>0?'+':'')+val+'</span>'
+            +'</div>';
+        }).join('')
+      + '</div>'
+    : '';
+
+  var slotCards = ['weapon','armor','tool'].map(function(type){
+    var item = equipped.find(function(i){ return i.type === type; });
+    var rc = item ? ({common:'#9ca3af',uncommon:'#4ade80',rare:'#60a5fa',epic:'#a855f7',legendary:'#f59e0b'}[item.rarity]||'#9ca3af') : '#374151';
+    return '<div style="padding:12px;border-radius:10px;border:1px solid '+(item?'rgba(168,85,247,0.3)':'rgba(255,255,255,0.07)')+';background:'+(item?'rgba(168,85,247,0.06)':'rgba(255,255,255,0.02)')+';margin-bottom:8px">'
+      + '<div style="font-size:0.65rem;color:#6b7280;font-weight:700;letter-spacing:0.07em;margin-bottom:6px">'+slots[type]+'</div>'
+      + (item
+          ? '<div style="display:flex;align-items:center;justify-content:space-between">'
+            + '<div><div style="font-weight:700;font-size:0.88rem;color:'+rc+'">'+esc(item.name)+'</div>'
+            + (item.effect?'<div style="font-size:0.72rem;color:#6b7280;margin-top:2px">'+esc(item.effect)+'</div>':'')
+            + (item.statBonus?'<div style="font-size:0.7rem;color:#a78bfa;margin-top:2px">'+Object.keys(item.statBonus).map(function(s){return s+'+'+(item.statBonus[s]);}).join(' · ')+'</div>':'')
+            + '</div>'
+            + '<button class="inv-equip-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">Unequip</button>'
+            + '</div>'
+          : '<div style="font-size:0.8rem;color:#374151;font-style:italic">Nothing equipped</div>'
+        )
+      + '</div>';
+  }).join('');
+
+  var unequippable = equipped.filter(function(i){ return i.type !== 'weapon' && i.type !== 'armor' && i.type !== 'tool'; });
+  var accessoryHtml = unequippable.length > 0
+    ? '<div style="margin-top:6px"><div style="font-size:0.65rem;color:#6b7280;font-weight:700;letter-spacing:0.07em;margin-bottom:6px">⚡ ACCESSORIES / OTHER</div>'
+      + unequippable.map(function(item){
+          var rc = {common:'#9ca3af',uncommon:'#4ade80',rare:'#60a5fa',epic:'#a855f7',legendary:'#f59e0b'}[item.rarity]||'#9ca3af';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(168,85,247,0.2);margin-bottom:6px">'
+            +'<div><span style="font-weight:700;font-size:0.82rem;color:'+rc+'">'+esc(item.name)+'</span>'
+            +(item.effect?'<div style="font-size:0.7rem;color:#6b7280;margin-top:1px">'+esc(item.effect)+'</div>':'')
+            +'</div>'
+            +'<button class="inv-equip-btn" data-id="'+item.id+'" style="font-size:0.7rem;padding:4px 8px;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">Remove</button>'
+            +'</div>';
+        }).join('')
+      + '</div>'
+    : '';
+
+  return '<div style="padding:12px">'
+    + (equipped.length === 0 && Object.keys(bonuses).length === 0
+        ? '<div style="text-align:center;padding:30px 0;color:#4b5563"><div style="font-size:2rem;margin-bottom:8px">⚔️</div><div style="font-size:0.85rem">No gear equipped.</div><div style="font-size:0.75rem;margin-top:4px;color:#374151">Equip items from the Items tab.</div></div>'
+        : slotCards + accessoryHtml + statBonusHtml
+      )
+    + '</div>';
+}
+
+
 function renderInventoryPanel() {
   var inv = getInventory();
   var c = state.currentChar;
@@ -2672,11 +2744,12 @@ function renderInventoryPanel() {
     // tabs
     +'<div style="display:flex;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">'
     +'<button id="inv-tab-items" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='items'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='items'?'#a855f7':'#6b7280')+'">🎒 Items</button>'
+    +'<button id="inv-tab-equip" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='equip'?'#f59e0b':'transparent')+';background:transparent;color:'+(activeTab==='equip'?'#f59e0b':'#6b7280')+'">⚔️ Gear</button>'
     +'<button id="inv-tab-stats" style="flex:1;padding:9px 0;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;border-bottom:2px solid '+(activeTab==='stats'?'#a855f7':'transparent')+';background:transparent;color:'+(activeTab==='stats'?'#a855f7':'#6b7280')+'">📊 Stats</button>'
     +'</div>'
     // content
     +'<div style="flex:1;overflow-y:auto;padding:'+(activeTab==='stats'?'0':'12px')+'">'
-    +(activeTab==='stats' ? renderStatSheet() : itemRows)
+    +(activeTab==='stats' ? renderStatSheet() : activeTab==='equip' ? renderEquipmentTab() : itemRows)
     +'</div>'
     +'</div>';
 }
@@ -2737,6 +2810,25 @@ function renderCraftingPanel() {
         +skills.map(function(sk){ return '<option value="'+sk.id+'">'+sk.name+' (Lv.'+sk.level+')</option>'; }).join('')
         +'</select>'
         +'</div>'
+        // ── Three-factor check preview ───────────────────────────────────────
+        +(function(){
+          var mat = state.craftMaterialInput || '';
+          var invMats = getInventory().filter(function(i){ return i.type==='material'; });
+          var hasMat = mat && invMats.some(function(i){ return i.name.toLowerCase().includes(mat.toLowerCase()) || mat.toLowerCase().includes(i.name.toLowerCase()); });
+          var selId = (function(){ var s = document.getElementById ? document.getElementById('craft-skill-select') : null; return s ? s.value : ''; })();
+          var sk = skills.length > 0 ? skills[0] : null;
+          var statVal = sk ? getCraftStat(sk.category) : 0;
+          var grade = statGrade(statVal);
+          var gradeColor = {A:'#4ade80',B:'#60a5fa',C:'#fbbf24',D:'#fb923c',E:'#f87171'}[grade[0]]||'#9ca3af';
+          return mat ? '<div style="margin-bottom:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">'
+            +'<div style="font-size:0.65rem;color:#6b7280;font-weight:700;letter-spacing:0.06em;margin-bottom:6px">CRAFT CHECK</div>'
+            +'<div style="display:flex;flex-direction:column;gap:4px">'
+            +'<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem"><span style="color:'+(hasMat?'#4ade80':'#fbbf24')+';">'+(hasMat?'✓':'~')+'</span><span style="color:#9ca3af">Material: </span><span style="color:'+(hasMat?'#4ade80':'#fbbf24')+'">'+(hasMat?'In inventory':'Not in inventory — improvising')+'</span></div>'
+            +'<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem"><span style="color:'+(skills.length>0?'#4ade80':'#f87171')+';">'+(skills.length>0?'✓':'✗')+'</span><span style="color:#9ca3af">Technique: </span><span style="color:'+(skills.length>0?'#4ade80':'#f87171')+'">'+(sk ? sk.name+' Lv.'+sk.level : 'No skill — risky improvisation')+'</span></div>'
+            +'<div style="display:flex;align-items:center;gap:6px;font-size:0.75rem"><span style="color:'+gradeColor+'">✦</span><span style="color:#9ca3af">Skill: </span><span style="color:'+gradeColor+'">'+(sk ? (CRAFT_STAT[sk.category]||'STR')+' '+statVal+' ('+grade+')' : '—')+'</span></div>'
+            +'</div></div>'
+          : '';
+        })()
         +'<button id="btn-do-craft" style="width:100%;padding:9px;border-radius:8px;border:none;background:linear-gradient(to right,#7c3aed,#9333ea);color:white;font-weight:700;font-size:0.82rem;cursor:pointer">'
         +(state.craftingLoading?'⚙️ Crafting...':'🔨 Craft Item')
         +'</button>'
@@ -2892,11 +2984,11 @@ function renderLootToast() {
 // ============================================================
 
 var COBUILD_OPENING = [
-  "A god with a world to build — I love this part. Before anything else, just throw something at me. An image, a feeling, a half-formed idea, a single word. What is already living in your head?",
-  "Okay, new world. Tell me the thing you are most excited about — the idea that made you want to build this instead of picking an existing one. We will pull everything else out of that.",
-  "Let us start at the beginning: what kind of world do you *not* want to build? Sometimes knowing what is off the table tells me more than knowing what is on it.",
-  "Close your eyes for a second. Someone is walking through this world — not a hero, just a person. What do they see in the first five minutes? What do they smell, hear, feel?",
-  "Every world has a heartbeat — one thing that makes it alive. What is yours? Magic, politics, religion, nature, war, something stranger? We can start anywhere."
+  "A god with a world to build. This is my favorite thing. Don't overthink it — just throw something at me. One image. One feeling. One word that already lives in your head. We pull everything else out of that.",
+  "Okay, blank canvas. But here's what I want to know first: what made you want to build *this* world instead of picking one that already exists? There's something specific that drew you here. What is it?",
+  "Close your eyes for a second. Someone ordinary — not a hero, just a person — is standing in your world on a Tuesday. What do they see? What do they smell? Are they afraid? Bored? Grateful to be alive? Start there.",
+  "Every world has one thing that makes it unlike anything else. One idea that no one else has built exactly this way. What's yours? Could be tiny. Could be the whole point. Tell me.",
+  "Before we build anything — what do you *not* want? Sometimes knowing what's off the table tells me more than knowing what's on it. What kind of world would make you close the tab immediately?"
 ];
 
 var COBUILD_FIELD_QUESTIONS = {
@@ -2963,28 +3055,35 @@ async function cobuildSend(playerText) {
   state.cobuildThinking = true;
   render(); setTimeout(cobuildScrollToBottom, 50);
 
-  // Turn count = number of player messages so far
   var turnNumber = state.cobuildMessages.filter(function(m){ return m.role === 'player'; }).length;
-
-  // Build conversation history
-  var history = state.cobuildMessages.map(function(m) {
-    return (m.role === 'vesper' ? 'Vesper' : 'Player') + ': ' + m.text;
-  }).join('\n\n');
-
-  // Track which areas we have decent coverage on
   var gathered = cobuildAssessCoverage();
   var sys = COBUILD_SYSTEM
     .replace('{TURN_NUMBER}', turnNumber)
     .replace('{GATHERED_FIELDS}', gathered || 'none yet');
 
+  // Build conversation history (exclude snapshot cards from context)
+  var history = state.cobuildMessages
+    .filter(function(m){ return !m.snapshot; })
+    .map(function(m){ return (m.role === 'vesper' ? 'Vesper' : 'Player') + ': ' + m.text; })
+    .join('\n\n');
+
   try {
-    var reply = await callAI(sys, history + '\n\nVesper:', 350);
-    // Check for ready signal
+    var reply = await callAI(sys, history + '\n\nVesper:', 400);
     var isDone = reply.includes('[READY_TO_BUILD]');
-    // Strip the tag from displayed message
     var displayReply = reply.replace('[READY_TO_BUILD]', '').trim();
     state.cobuildMessages.push({ role: 'vesper', text: displayReply });
     if (isDone) state.cobuildDone = true;
+
+    // ── World Snapshot every 4-5 turns ──────────────────────────────────────
+    var snapshotTurns = [4, 8, 13];
+    if (snapshotTurns.indexOf(turnNumber) > -1 && !isDone) {
+      // Generate a short evocative scene from what we know so far
+      var snapshotPrompt = 'You are Vesper. Based on this world-building conversation, write one short evocative paragraph (3-5 sentences) describing a specific scene in this world as it exists RIGHT NOW — sensory, specific, alive. A person walking through it. What do they see, smell, feel? No summaries. No metadata. Pure scene. Keep it under 80 words.\n\nConversation so far:\n' + history;
+      var snapshot = await callAI('You are a vivid world-builder. Write a single evocative scene in this world. Pure prose, no headers, no labels. Under 80 words.', snapshotPrompt, 180);
+      state.cobuildMessages.push({ role: 'vesper', text: snapshot.trim(), snapshot: true });
+      // Follow-up reaction prompt
+      state.cobuildMessages.push({ role: 'vesper', text: 'Does that feel right — or does something need to change?' });
+    }
   } catch(e) {
     console.error('cobuildSend error:', e);
     state.cobuildMessages.push({ role: 'vesper', text: 'Something went wrong: ' + (e.message || String(e)) });
@@ -3066,6 +3165,149 @@ async function cobuildFinalize() {
   state.cobuildThinking = false;
   render();
 }
+
+
+function renderCobuildReview() {
+  var w = state.draftWorld || {};
+  var badge = function(label, val, color) {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;background:'+color+';margin:3px">'+label+': <strong>'+esc(val||'—')+'</strong></span>';
+  };
+  return '<div style="min-height:100vh;background:linear-gradient(135deg,#030712,#0d0520,#030712);overflow-y:auto">'
+    +'<div style="max-width:640px;margin:0 auto;padding:40px 20px">'
+    // Header
+    +'<div style="text-align:center;margin-bottom:32px">'
+    +'<div style="font-size:2.5rem;margin-bottom:12px">✦</div>'
+    +'<h1 style="font-size:1.8rem;font-weight:900;background:linear-gradient(to right,#c084fc,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px">Your World Is Ready</h1>'
+    +'<p style="color:#9ca3af;font-size:0.9rem">Review what Vesper built. You can fine-tune anything in the next step.</p>'
+    +'</div>'
+    // World card
+    +'<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(124,58,237,0.35);border-radius:20px;padding:28px;margin-bottom:20px">'
+    +'<h2 style="font-size:1.5rem;font-weight:800;color:white;margin-bottom:6px">'+esc(w.name||'Unnamed World')+'</h2>'
+    +'<p style="color:#c4b5fd;font-size:0.85rem;line-height:1.6;margin-bottom:20px">'+esc(w.description||'')+'</p>'
+    // Stat badges
+    +'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:20px">'
+    +badge('Magic', w.magic_level, 'rgba(139,92,246,0.2)')
+    +badge('Tech', w.technology_level, 'rgba(59,130,246,0.2)')
+    +badge('Danger', w.danger_level, 'rgba(239,68,68,0.2)')
+    +badge('Population', w.population_density, 'rgba(16,185,129,0.2)')
+    +'</div>'
+    // Key sections
+    +(w.lore ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Lore</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.lore)+'</p></div>' : '')
+    +(w.factions ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Factions</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.factions)+'</p></div>' : '')
+    +(w.rules_of_nature ? '<div style="margin-bottom:16px"><div style="font-size:0.7rem;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Rules of Nature</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.rules_of_nature)+'</p></div>' : '')
+    +(w.secrets_mysteries ? '<div style="margin-bottom:4px"><div style="font-size:0.7rem;font-weight:700;color:#ec4899;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Secrets & Mysteries</div><p style="color:#d1d5db;font-size:0.83rem;line-height:1.6">'+esc(w.secrets_mysteries)+'</p></div>' : '')
+    +'</div>'
+    // CTA buttons
+    +'<div style="display:flex;flex-direction:column;gap:10px">'
+    +'<button id="cobuild-confirm" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:16px;border-radius:14px;font-size:1.05rem;font-weight:800;cursor:pointer;width:100%">✨ Enter This World →</button>'
+    +'<button id="cobuild-edit" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#d1d5db;padding:13px;border-radius:14px;font-size:0.9rem;font-weight:600;cursor:pointer;width:100%">✏️ Fine-Tune in World Builder</button>'
+    +'<button id="cobuild-restart" style="background:none;border:none;color:#6b7280;padding:10px;font-size:0.8rem;cursor:pointer;width:100%">↺ Start Over</button>'
+    +'</div>'
+    +'</div>'
+    +'</div>';
+}
+
+function attachCobuildReviewEvents() {
+  var confirm = document.getElementById('cobuild-confirm');
+  var edit = document.getElementById('cobuild-edit');
+  var restart = document.getElementById('cobuild-restart');
+  if (confirm) confirm.addEventListener('click', function() {
+    // Go straight to character creation with this world loaded
+    state.currentWorld = Object.assign({ id: 'draft_cobuild' }, state.draftWorld);
+    state.screen = 'charCreate';
+    state.charStep = 0;
+    state.draftChar = {};
+    render();
+  });
+  if (edit) edit.addEventListener('click', function() {
+    state.screen = 'createWorld';
+    state.worldStep = 0;
+    render();
+  });
+  if (restart) restart.addEventListener('click', function() {
+    state.draftWorld = {};
+    state.cobuildMessages = [];
+    state.cobuildDone = false;
+    state.cobuildOpen = false;
+    state.screen = 'worlds';
+    render();
+  });
+}
+
+function renderCobuildOverlay() {
+  if (!state.cobuildOpen) return '';
+  var msgs = state.cobuildMessages;
+  var thinking = state.cobuildThinking;
+  var done = state.cobuildDone;
+  var turnCount = msgs.filter(function(m){ return m.role === 'player'; }).length;
+
+  // ── Coverage progress bar ─────────────────────────────────────────────────
+  var covered = cobuildAssessCoverage();
+  var coveredAreas = covered === 'none yet' ? [] : covered.split(', ');
+  var allAreas = ['world setting','magic/power system','factions/power','danger/conflict','culture/people','tone/vibe','secrets'];
+  var pct = Math.min(100, Math.round((coveredAreas.length / allAreas.length) * 100));
+  var progressBar = '<div style="padding:0 20px 10px;background:rgba(10,5,30,0.8)">'
+    + '<div style="display:flex;justify-content:space-between;font-size:0.68rem;color:#6b7280;margin-bottom:4px">'
+    + '<span>World depth</span><span style="color:'+(pct>=70?'#4ade80':pct>=40?'#fbbf24':'#9ca3af')+'">'+(pct>=70?'Rich enough to build':'Building…')+'</span>'
+    + '</div>'
+    + '<div style="background:rgba(255,255,255,0.07);border-radius:4px;height:4px">'
+    + '<div style="background:linear-gradient(to right,#7c3aed,#ec4899);height:4px;border-radius:4px;width:'+pct+'%;transition:width 0.5s ease"></div>'
+    + '</div>'
+    + '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">'
+    + allAreas.map(function(a){ var hit = coveredAreas.indexOf(a) > -1; return '<span style="font-size:0.62rem;padding:2px 7px;border-radius:9999px;background:'+(hit?'rgba(124,58,237,0.3)':'rgba(255,255,255,0.04)')+';color:'+(hit?'#c084fc':'#374151')+';border:1px solid '+(hit?'rgba(124,58,237,0.4)':'rgba(255,255,255,0.06)')+'">'+a+'</span>'; }).join('')
+    + '</div></div>';
+
+  // ── Messages ──────────────────────────────────────────────────────────────
+  var msgHtml = msgs.map(function(m) {
+    var isVesper = m.role === 'vesper';
+    var isSnapshot = m.snapshot === true;
+    if (isSnapshot) {
+      // World snapshot — rendered as a prose card
+      return '<div style="margin:16px 0;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-left:3px solid #7c3aed;border-radius:12px;padding:16px 18px">'
+        + '<div style="font-size:0.65rem;color:#7c3aed;font-weight:700;letter-spacing:0.08em;margin-bottom:8px">✦ WORLD SNAPSHOT</div>'
+        + '<div style="font-size:0.88rem;line-height:1.65;color:#c4b5fd;font-style:italic">' + esc(m.text) + '</div>'
+        + '</div>';
+    }
+    return '<div style="display:flex;gap:10px;margin-bottom:16px;' + (isVesper ? '' : 'flex-direction:row-reverse') + '">'
+      + '<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;background:' + (isVesper ? 'linear-gradient(135deg,#7c3aed,#ec4899)' : 'rgba(255,255,255,0.1)') + '">' + (isVesper ? '✦' : '👤') + '</div>'
+      + '<div style="max-width:80%;background:' + (isVesper ? 'rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1)') + ';border-radius:' + (isVesper ? '4px 16px 16px 16px' : '16px 4px 16px 16px') + ';padding:12px 15px;font-size:0.88rem;line-height:1.55;color:' + (isVesper ? '#e2d9f3' : '#d1d5db') + '">' + esc(m.text) + '</div>'
+      + '</div>';
+  }).join('');
+
+  if (thinking) {
+    msgHtml += '<div style="display:flex;gap:10px;margin-bottom:16px">'
+      + '<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.1rem;background:linear-gradient(135deg,#7c3aed,#ec4899)">✦</div>'
+      + '<div style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);border-radius:4px 16px 16px 16px;padding:14px 18px">'
+      + '<span class="dot1" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c084fc;margin:0 2px"></span>'
+      + '<span class="dot2" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c084fc;margin:0 2px"></span>'
+      + '<span class="dot3" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c084fc;margin:0 2px"></span>'
+      + '</div></div>';
+  }
+
+  return '<div id="cobuild-overlay" style="position:fixed;inset:0;z-index:300;background:rgba(3,7,18,0.95);backdrop-filter:blur(14px);display:flex;flex-direction:column">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(124,58,237,0.2);background:rgba(10,5,30,0.8)">'
+    + '<div style="display:flex;align-items:center;gap:10px">'
+    + '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899);display:flex;align-items:center;justify-content:center;font-size:1.2rem">✦</div>'
+    + '<div><div style="font-weight:700;font-size:1rem">Build With Vesper</div>'
+    + '<div style="font-size:0.72rem;color:#9ca3af">Turn '+turnCount+' · '+coveredAreas.length+' of 7 areas explored</div></div>'
+    + '</div>'
+    + '<button id="cobuild-close" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:6px 14px;border-radius:20px;font-size:0.8rem;cursor:pointer">✕ Exit</button>'
+    + '</div>'
+    + progressBar
+    + '<div id="cobuild-messages" style="flex:1;overflow-y:auto;padding:20px;scroll-behavior:smooth">' + msgHtml + '</div>'
+    + '<div style="padding:16px 20px;border-top:1px solid rgba(124,58,237,0.2);background:rgba(10,5,30,0.8)">'
+    + (done
+      ? '<div style="text-align:center"><div style="background:rgba(124,58,237,0.12);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:14px 20px;margin-bottom:14px"><p style="color:#c084fc;font-weight:700;font-size:0.95rem;margin-bottom:4px">✦ Vesper has enough to build your world.</p><p style="color:#9ca3af;font-size:0.8rem">I will generate your full world document from our conversation. You can review and tweak everything before entering.</p></div>'
+        + '<button id="cobuild-finalize" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:13px 32px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;width:100%">' + (thinking ? '⏳ Building your world...' : '✨ Build My World →') + '</button></div>'
+      : '<div style="display:flex;gap:10px;align-items:flex-end">'
+        + '<textarea id="cobuild-input" placeholder="Tell me about your world idea…" rows="2" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:11px 14px;color:white;font-size:0.9rem;outline:none;resize:none"></textarea>'
+        + '<button id="cobuild-send" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:11px 18px;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;flex-shrink:0">→</button>'
+        + '</div>'
+    )
+    + '</div>'
+    + '</div>';
+}
+
 
 
 function renderCobuildReview() {
@@ -5742,6 +5984,8 @@ function attachPlayEvents() {
   var tabItems=document.getElementById('inv-tab-items');
   var tabStats=document.getElementById('inv-tab-stats');
   if(tabItems) tabItems.addEventListener('click',function(){state.invTab='items';render();});
+  var tabEquip=document.getElementById('inv-tab-equip');
+  if(tabEquip) tabEquip.addEventListener('click',function(){state.invTab='equip';render();});
   if(tabStats) tabStats.addEventListener('click',function(){state.invTab='stats';render();});
   var os=document.getElementById('btn-open-shop');
   if(os) os.addEventListener('click',function(){generateShop('general');});
