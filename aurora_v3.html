@@ -60,6 +60,29 @@ let state = {
       });
       localStorage.setItem('aurora_worlds', JSON.stringify(stored));
     }
+    // Auto-seed Shadow Slave world from agent import
+    var hasShadowSlave = stored.some(function(w){ return w.id === 'shadow-slave-001'; });
+    if (!hasShadowSlave) {
+      stored.push({
+        id: "shadow-slave-001",
+        world_type: "Known",
+        name: "Shadow Slave — The Dream Realm",
+        status: "Active",
+        experience_mode: "Dark progression fantasy with psychological depth. Growth only through combat — every worthy kill makes you stronger. Canon story runs parallel: Sunny's cohort always surviving and ascending. Player can join them, betray them, oppose them, or transcend them entirely. Earn Sovereign-tier before Nephis and YOU become the dominant power.",
+        magic_level: "High",
+        technology_level: "Modern",
+        danger_level: "Extreme",
+        population_density: "Waking World: billions of humans, millions infected by the Spell, thousands of Awakened. Dream Realm: dominated entirely by Nightmare Creatures of all ranks.",
+        setting: "Contemporary dystopian Earth overlaid with the Dream Realm — a dark, ruined magical dimension of ancient civilizations, fallen gods, and Nightmare Creatures. The two worlds bleed into each other through Gates that open after failed Nightmares. Modern cities coexist with supernatural horror.",
+        climate: "Forgotten Shore: desolate crimson sea, black earth, grey sky, ancient ruins. Chained Isles: floating rock above infinite void. Antarctica Dream Realm: frozen apocalypse. Godgrave: landscape of dead gods' bones.",
+        description: "Contemporary dystopian Earth devastated by the Nightmare Spell — an ancient, acausal force that infects people and drags them into the Dream Realm: a vast ruined world of darkness, monsters, and fallen gods. Survivors return as the Awakened with supernatural Aspects. Entry point: Sunny has just been infected by the Nightmare Spell. His First Nightmare begins tonight on the Forgotten Shore. The main story runs without the player — you are a third party entering canon already in motion.",
+        lore: "RANK SYSTEM: Human path — Dormant (Sleeper) > Awakened > Ascended > Transcendent (Saint) > Sovereign (Master) > Spirit (Sacred) > God (Divine). Nightmare Creature path — Beast > Monster > Demon > Devil > Tyrant > Terror > Titan. Rank = soul core QUALITY. Class (1-7 soul cores) = soul core QUANTITY. Both must advance.\n\nSUNNY'S ASPECT — SHADOW: Shadow Step (travel through darkness), Shadow Absorption (collect Shadow Fragments from worthy kills), Legion of Shadows (slain enemies reborn as Shadows). SLAVE CURSE: Sunny is designated Slave — lowest possible rank. He casts no shadow of his own.\n\nMORDRET (PRINCE OF NOTHING) — SLEEPER THREAT: Ancient soul-parasite wearing a human face. His Aspect: travel through reflective surfaces, soul possession via direct eye contact with a reflection. He is patient, infinitely manipulative, and always multiple moves ahead. ANY NPC who looks into a mirror or still water near the Chained Isles is a possession risk.\n\nCASSIE'S ORACLE: Her visions are ALWAYS true. They are ALMOST ALWAYS misinterpreted. Never discard a Cassie vision — reinterpret it.\n\nGATES: If all challengers die in a Nightmare before finding the Seed, a Gate opens in the real world.\n\nCANON DRIFT: Below 30 turns the Spell's fate-weaving nudges events toward the Cohort's survival. Above 60 Mordret awakens ahead of schedule.",
+        factions: "The Cohort (Sunny/Nephis/Cassie/Effie/Kai, bound by First Nightmare survival) | Immortal Flame Clan (Nephis is heir, fire-aspected warriors) | House of Night (Mordret's former power base, shadow secrets) | Song Clan (Cassie is heir) | Mordret/Prince of Nothing (hostile sleeper, dormant in Chained Isles, watching through every reflection) | Nightmare Creatures (hostile dominant, all 7 creature tiers present) | Evacuation Government (managing the Spell crisis, Saint-tier Awakened operatives)",
+        landmarks: "Forgotten Shore (First Nightmare, crimson sea and black earth, ancient ruins) | Crimson Spire (First Nightmare objective, Nameless Goddess's tomb) | Chained Isles (Second Nightmare, MORDRET IS HERE, floating islands above infinite void) | Night Garden (Mordret's former Citadel) | Antarctica Dream Realm (Third Nightmare) | Godgrave (endgame, landscape of dead gods' bones) | Waking World cities (Gates breach here when Nightmares fail)",
+        rules_of_nature: "1. Death in the First Nightmare equals death in reality — no second chances on the Forgotten Shore\n2. The Nightmare Spell cannot be refused once infection takes hold — resistance means death within one week\n3. Shadow Fragments only drop from worthy kills — the Spell decides what qualifies, grinding yields nothing\n4. Aspects are permanent and unchangeable — you work with what you are given\n5. Mordret can only possess someone through direct eye contact with a reflection — mirrors and still water are his doors\n6. Cassie's visions are always true but almost always misinterpreted — never discard them\n7. A Gate opens in the real world if all Nightmare challengers die before finding the Seed\n8. The Nightmare Spell is acausal — it manipulates fate itself and does not adhere to cause and effect"
+      });
+      localStorage.setItem('aurora_worlds', JSON.stringify(stored));
+    }
     return stored;
   })(),
   characters: JSON.parse(localStorage.getItem('aurora_chars') || '[]'),
@@ -95,6 +118,8 @@ let state = {
   levelUpScreen: null,
   permadeath: false,
   gameOverReason: null,
+  narratorStyle: localStorage.getItem('aurora_narrator_style') || 'gamemaster',
+  lastStatCheck: null,
   deathDropped: [],
   deathGoldLost: 0,
   summarizing: false,
@@ -546,6 +571,94 @@ var ACTION_EMOJI = {
   rest:'😴', pray:'🙏', perform:'🎭', write:'✍️',
 };
 
+
+// ── STAT CHECK ENGINE ────────────────────────────────────────────────────────
+// Maps action types to their primary and secondary governing stats
+var ACTION_STAT_MAP = {
+  combat:    { primary: 'STR', secondary: 'DEX', label: 'Combat' },
+  ability:   { primary: 'INT', secondary: 'WIS', label: 'Ability' },
+  flee:      { primary: 'DEX', secondary: 'CON', label: 'Escape' },
+  dialogue:  { primary: 'CHA', secondary: 'WIS', label: 'Persuasion' },
+  negotiate: { primary: 'CHA', secondary: 'INT', label: 'Negotiation' },
+  study:     { primary: 'INT', secondary: 'WIS', label: 'Knowledge' },
+  teach:     { primary: 'WIS', secondary: 'INT', label: 'Teaching' },
+  craft:     { primary: 'DEX', secondary: 'INT', label: 'Crafting' },
+  build:     { primary: 'STR', secondary: 'INT', label: 'Building' },
+  brew:      { primary: 'INT', secondary: 'WIS', label: 'Alchemy' },
+  farm:      { primary: 'CON', secondary: 'WIS', label: 'Farming' },
+  harvest:   { primary: 'DEX', secondary: 'CON', label: 'Harvest' },
+  tend:      { primary: 'WIS', secondary: 'CHA', label: 'Tending' },
+  trade:     { primary: 'CHA', secondary: 'INT', label: 'Trading' },
+  barter:    { primary: 'CHA', secondary: 'WIS', label: 'Bartering' },
+  heal:      { primary: 'WIS', secondary: 'DEX', label: 'Healing' },
+  explore:   { primary: 'WIS', secondary: 'CON', label: 'Exploration' },
+  hunt:      { primary: 'DEX', secondary: 'WIS', label: 'Hunting' },
+  forage:    { primary: 'WIS', secondary: 'CON', label: 'Foraging' },
+  rest:      { primary: 'CON', secondary: 'SMY', label: 'Recovery' },
+  pray:      { primary: 'SMY', secondary: 'WIS', label: 'Focus' },
+  perform:   { primary: 'CHA', secondary: 'DEX', label: 'Performance' },
+  write:     { primary: 'INT', secondary: 'CHA', label: 'Composition' },
+};
+
+// Outcome tiers based on roll result (0-100)
+var OUTCOME_TIERS = [
+  { min: 0,  max: 15,  label: 'Critical Failure', color: '#ef4444', emoji: '💀', narrator: 'catastrophic failure with serious consequences' },
+  { min: 16, max: 35,  label: 'Failure',           color: '#f87171', emoji: '✗',  narrator: 'clear failure, things go wrong' },
+  { min: 36, max: 50,  label: 'Partial',           color: '#fb923c', emoji: '◑',  narrator: 'partial success with a complication or cost' },
+  { min: 51, max: 70,  label: 'Success',           color: '#4ade80', emoji: '✓',  narrator: 'clear success as intended' },
+  { min: 71, max: 88,  label: 'Strong Success',    color: '#60a5fa', emoji: '✦',  narrator: 'impressive success, exceeds expectations' },
+  { min: 89, max: 100, label: 'Critical Success',  color: '#c084fc', emoji: '⚡', narrator: 'exceptional outcome, something extra happens' },
+];
+
+function getOutcomeTier(roll) {
+  for (var i = 0; i < OUTCOME_TIERS.length; i++) {
+    if (roll >= OUTCOME_TIERS[i].min && roll <= OUTCOME_TIERS[i].max) return OUTCOME_TIERS[i];
+  }
+  return OUTCOME_TIERS[3];
+}
+
+function performStatCheck(actionType, playerText) {
+  if (!state.currentChar || !state.currentChar.stats) return null;
+  var mapping = ACTION_STAT_MAP[actionType];
+  if (!mapping) return null;
+  var stats = state.currentChar.stats;
+  var primaryVal  = stats[mapping.primary]  || 50;
+  var secondaryVal = stats[mapping.secondary] || 50;
+  // Weighted average: 70% primary, 30% secondary
+  var effectiveStat = Math.floor(primaryVal * 0.7 + secondaryVal * 0.3);
+  // Roll: d100 biased toward your stat
+  // At stat 100 (baseline), pure random 0-100
+  // At stat 200, floor rises to ~40 (very hard to fail)
+  // At stat 10, ceiling drops to ~60 (very hard to fully succeed)
+  var statBias = (effectiveStat - 100) / 2; // -45 to +50
+  var rawRoll  = Math.floor(Math.random() * 100);
+  var finalRoll = Math.max(0, Math.min(100, rawRoll + statBias));
+  var outcome = getOutcomeTier(Math.round(finalRoll));
+  return {
+    actionType:   actionType,
+    label:        mapping.label,
+    primary:      mapping.primary,
+    primaryVal:   primaryVal,
+    secondary:    mapping.secondary,
+    secondaryVal: secondaryVal,
+    effective:    effectiveStat,
+    roll:         Math.round(finalRoll),
+    outcome:      outcome,
+  };
+}
+
+// Render the floating stat check pill that appears before narrator responds
+function renderStatCheckPill(check) {
+  if (!check) return '';
+  var o = check.outcome;
+  return '<div class="stat-check-pill" style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,0,0,0.7);border:1px solid ' + o.color + ';border-radius:20px;padding:6px 14px;font-size:0.78rem;margin:6px 0;backdrop-filter:blur(8px)">'
+    + '<span style="font-size:1rem">' + o.emoji + '</span>'
+    + '<span style="color:#9ca3af">' + check.label + '</span>'
+    + '<span style="color:' + o.color + ';font-weight:700">' + o.label + '</span>'
+    + '<span style="color:#4b5563;font-size:0.7rem">(' + check.primary + ' ' + check.primaryVal + ')</span>'
+    + '</div>';
+}
+
 // Detect the dominant action type from a player\'s free-text input
 function detectActionType(text) {
   var lower = text.toLowerCase();
@@ -839,13 +952,22 @@ async function callAI(system, user, maxTokens) {
       'Authorization': 'Bearer ' + state.apiKey
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
+      model: (function() {
+        var style = state.narratorStyle || 'gamemaster';
+        if (style === 'chronicler' || style === 'grimdark') return 'gpt-4o';
+        return 'gpt-4o-mini';
+      }()),
+      temperature: (function() {
+        var style = state.narratorStyle || 'gamemaster';
+        var temps = { chronicler: 0.9, gamemaster: 0.82, wildcard: 1.1, grimdark: 0.78, companion: 0.75 };
+        return temps[style] || 0.85;
+      }()),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
       ],
       max_tokens: maxTokens,
-      temperature: 0.85
+
     })
   });
   if (!res.ok) {
@@ -1040,8 +1162,24 @@ function buildSystemPrompt() {
         : '')
     + 'RECENT EXCHANGES (last ' + (state.recentMemory.length) + ' turns):\n' + (recentCtx || '(None yet.)') + '\n\n'
     + (w.world_stability !== undefined ? '- WORLD STABILITY: ' + w.world_stability + '% — ' + (w.world_stability < 40 ? 'World is FRACTURING. Events are escalating, NPCs are panicked, danger is everywhere.' : w.world_stability < 70 ? 'World is UNSTABLE. Factions are tense, rumors fly, danger lurks.' : 'World is STABLE but threats simmer beneath the surface.') + '\n' : '')
+    + (function() {
+        var style = state.narratorStyle || 'gamemaster';
+        var personas = {
+          chronicler: 'NARRATOR PERSONA — THE CHRONICLER: You write with literary precision. Rich, evocative prose. Every scene is a painting. You favor long sentences that breathe, sensory detail that grounds the reader, and moments of quiet beauty alongside violence. You are the voice of history itself.',
+          gamemaster: 'NARRATOR PERSONA — THE GAME MASTER: Classic tabletop energy. Balanced storytelling and mechanics. Rules-aware. You call out skill checks, mention what NPCs are doing, describe tactical situations clearly. You keep the energy high and the stakes clear.',
+          wildcard: 'NARRATOR PERSONA — THE WILDCARD: You are unpredictable. You take left turns. You make NPCs do unexpected things. You introduce complications the player didn't see coming — not unfair, just surprising. Chaos has a logic. You know it.',
+          grimdark: 'NARRATOR PERSONA — THE GRIMDARK: Brutal. Unflinching. You do not soften death, consequence, or ugliness. You find beauty in the dark. You never let the player feel safe. This world bites back.',
+          companion: 'NARRATOR PERSONA — THE COMPANION: Warm. Conversational. You make the player feel seen. You celebrate small wins. You describe failure with compassion. You are the encouraging voice that makes hard moments feel meaningful.',
+        };
+        return (personas[style] || personas.gamemaster) + '\n\n';
+      }())
     + 'NARRATOR RULES:\n'
-    + '- Present tense, second person ("You step forward...").\n'
+    + '- POV: ' + (function() {
+        var pov = state.currentChar && state.currentChar.pov || 'second';
+        if (pov === 'first')  return 'FIRST PERSON. Write "I step forward..." — the character speaks. SMY gains +10% faster. Strict tunnel vision: only narrate what the character directly perceives.';
+        if (pov === 'third')  return 'THIRD PERSON. Write "' + esc(state.currentChar ? state.currentChar.name : 'The hero') + ' steps forward..." — you may briefly describe things the character does not know, dramatic irony is allowed, political/faction awareness is wider.';
+        return 'SECOND PERSON. Write "You step forward..." — default balanced perspective.';
+      }()) + '\n'
     + '- 2-4 punchy paragraphs. Make every word count.\n'
     + '- End with tension or an implicit decision point.\n'
     + '- RULEBOUND REALITY: The World Contract is ABSOLUTE. The laws of magic, death, power, and reality defined by the player are PERMANENT BINDING RULES. You may never have NPCs, events, or results contradict them. A character flaw MUST create real narrative consequences — not cosmetic flavor. If the power law says rank must be earned, no one jumps ranks without a breakthrough moment.\n'
@@ -1067,7 +1205,13 @@ function buildSystemPrompt() {
     + '- When combat starts, tag: [COMBAT_START:EnemyName:HP]\n'
     + '- Write combat as real-time cinematic action — never turn-based language.\n'
     + '- Tag damage: [PDMG:X] player deals, [EDMG:X] enemy deals\n'
-    + '- End combat: [COMBAT_END:victory] or [COMBAT_END:defeat] or [COMBAT_END:fled]';
+    + '- End combat: [COMBAT_END:victory] or [COMBAT_END:defeat] or [COMBAT_END:fled]'
+    + (state.lastStatCheck ? '\n\nSTAT CHECK RESULT (BINDING):\n'
+        + 'The player just attempted a ' + state.lastStatCheck.label + ' action. '
+        + 'Stat check: ' + state.lastStatCheck.primary + ' ' + state.lastStatCheck.primaryVal + ' → Roll ' + state.lastStatCheck.roll + '/100 → ' + state.lastStatCheck.outcome.label + '.\n'
+        + 'You MUST write the outcome as: ' + state.lastStatCheck.outcome.narrator + '. '
+        + 'This is non-negotiable. If it is a failure, something goes wrong. If critical success, something exceptional happens beyond what the player expected. '
+        + 'Do NOT ignore this result.' : '');
 }
 
 function parseResponse(text) {
@@ -1455,7 +1599,9 @@ async function sendMessage(text) {
       }
     }
     var diceContext = rollContextString(diceResults);
+    state.lastStatCheck = statCheck;
     var res = await callAI(buildSystemPrompt(), 'Player: ' + annotatedText + rollInfo + diceContext);
+    state.lastStatCheck = null;
     var parsed = parseResponse(res);
     if (parsed.combatStart) { state.inCombat = true; state.enemy = { name: parsed.combatStart.name, hp: parsed.combatStart.hp, maxHp: parsed.combatStart.hp }; }
     if (parsed.edmg) { state.charHP = Math.max(0, state.charHP - parsed.edmg); }
@@ -1490,14 +1636,19 @@ async function sendMessage(text) {
   } catch(e) {
     state.messages.push({ role:'narrator', text: 'The world shimmers... something interrupted the flow. Try again.', id: Date.now()+2 });
   }
-  // Award mastery XP — detect life path from player\'s actual words
+  // ── STAT CHECK + MASTERY ────────────────────────────────
   var detectedAction = detectActionType(text);
+  var statCheck = null;
   if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
+    statCheck = performStatCheck(detectedAction, text);
+    if (statCheck) {
+      state.messages.push({ role:'system', text: '[[STATCHECK:' + JSON.stringify(statCheck) + ']]', id: Date.now()+1 });
+    }
     var leveled = awardMasteryXP(detectedAction);
     if (leveled.length > 0) {
       var c2 = state.currentChar;
-      var aEmoji = ACTION_EMOJI[detectedAction] || '✨';
-      state.messages.push({ role:'system', text: aEmoji + ' [' + detectedAction.toUpperCase() + '] ' + leveled.map(function(s){ return s+' +1 ('+statGrade(c2.mastery[s])+')'; }).join(' · ') });
+      var aEmoji = ACTION_EMOJI[detectedAction] || '\u2728';
+      state.messages.push({ role:'system', text: aEmoji + ' [' + detectedAction.toUpperCase() + '] ' + leveled.map(function(s){ return s+' +1 ('+statGrade(c2.mastery[s])+')'; }).join(' \u00b7 ') });
     }
   }
   // Economic rewards for life-path actions
@@ -5295,7 +5446,16 @@ function renderPlay() {
       }
       return '<div style="max-width:28rem;margin:4px auto"><div style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);font-size:0.75rem;color:#9ca3af"><span>🎲 Skill Check: '+msg.playerRoll+'/20</span><span style="margin-left:auto;color:#c084fc">'+rollLabel(msg.result)+'</span></div></div>';
     }
-    if(msg.role==='system') return '<div style="text-align:center;margin:8px 0"><span style="font-size:0.875rem;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);padding:8px 20px;border-radius:9999px">'+esc(msg.text)+'</span></div>';
+    if(msg.role==='system') {
+      // Special: stat check pill
+      if (msg.text && msg.text.startsWith('[[STATCHECK:')) {
+        try {
+          var checkData = JSON.parse(msg.text.replace('[[STATCHECK:','').replace(']]',''));
+          return '<div style="display:flex;justify-content:center;margin:6px 0">' + renderStatCheckPill(checkData) + '</div>';
+        } catch(e) { /* fall through */ }
+      }
+      return '<div style="text-align:center;margin:8px 0"><span style="font-size:0.875rem;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);padding:8px 20px;border-radius:9999px">'+esc(msg.text)+'</span></div>';
+    }
     if(msg.role==='player') {
       // Parse [ ] as spoken dialogue, rest as action narration
       var playerHtml = esc(msg.text)
