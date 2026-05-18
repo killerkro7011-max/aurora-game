@@ -1165,11 +1165,11 @@ function buildSystemPrompt() {
     + (function() {
         var style = state.narratorStyle || 'gamemaster';
         var personas = {
-          chronicler: 'NARRATOR PERSONA — THE CHRONICLER: You write with literary precision. Rich, evocative prose. Every scene is a painting. You favor long sentences that breathe, sensory detail that grounds the reader, and moments of quiet beauty alongside violence. You are the voice of history itself.',
-          gamemaster: 'NARRATOR PERSONA — THE GAME MASTER: Classic tabletop energy. Balanced storytelling and mechanics. Rules-aware. You call out skill checks, mention what NPCs are doing, describe tactical situations clearly. You keep the energy high and the stakes clear.',
-          wildcard: 'NARRATOR PERSONA — THE WILDCARD: You are unpredictable. You take left turns. You make NPCs do unexpected things. You introduce complications the player didn't see coming — not unfair, just surprising. Chaos has a logic. You know it.',
-          grimdark: 'NARRATOR PERSONA — THE GRIMDARK: Brutal. Unflinching. You do not soften death, consequence, or ugliness. You find beauty in the dark. You never let the player feel safe. This world bites back.',
-          companion: 'NARRATOR PERSONA — THE COMPANION: Warm. Conversational. You make the player feel seen. You celebrate small wins. You describe failure with compassion. You are the encouraging voice that makes hard moments feel meaningful.',
+          chronicler: "NARRATOR PERSONA — THE CHRONICLER: You write with literary precision. Rich, evocative prose. Every scene is a painting. You favor long sentences that breathe, sensory detail that grounds the reader, and moments of quiet beauty alongside violence. You are the voice of history itself.",
+          gamemaster: "NARRATOR PERSONA — THE GAME MASTER: Classic tabletop energy. Balanced storytelling and mechanics. Rules-aware. You call out skill checks, mention what NPCs are doing, describe tactical situations clearly. You keep the energy high and the stakes clear.",
+          wildcard: "NARRATOR PERSONA — THE WILDCARD: You are unpredictable. You take left turns. You make NPCs do unexpected things. You introduce complications the player didn\'t see coming — not unfair, just surprising. Chaos has a logic. You know it.",
+          grimdark: "NARRATOR PERSONA — THE GRIMDARK: Brutal. Unflinching. You do not soften death, consequence, or ugliness. You find beauty in the dark. You never let the player feel safe. This world bites back.",
+          companion: "NARRATOR PERSONA — THE COMPANION: Warm. Conversational. You make the player feel seen. You celebrate small wins. You describe failure with compassion. You are the encouraging voice that makes hard moments feel meaningful.",
         };
         return (personas[style] || personas.gamemaster) + '\n\n';
       }())
@@ -4638,6 +4638,56 @@ function attachCreateWorldEvents() {
       render();
     });
   });
+  // ── World Laws textarea wiring ──────────────────────────────────────────────
+  var lawFields = [
+    ['world-magic-law',   'magic_law'],
+    ['world-death-law',   'death_law'],
+    ['world-reality-law', 'reality_law'],
+    ['world-power-law',   'power_law'],
+  ];
+  lawFields.forEach(function(pair) {
+    var el = document.getElementById(pair[0]);
+    if (el) {
+      el.addEventListener('input', function() {
+        state.draftWorld[pair[1]] = el.value;
+      });
+    }
+  });
+
+  // ── Power system type buttons ─────────────────────────────────────────────
+  document.querySelectorAll('.power-sys-btn').forEach(function(b) {
+    b.addEventListener('click', function() {
+      state.draftWorld.power_system_type = b.dataset.type;
+      render();
+    });
+  });
+
+  // ── Rank names input ──────────────────────────────────────────────────────
+  var rankNamesEl = document.getElementById('world-rank-names');
+  if (rankNamesEl) {
+    rankNamesEl.addEventListener('input', function() {
+      state.draftWorld.rank_names = rankNamesEl.value;
+    });
+  }
+
+  // ── World contract signed checkbox ────────────────────────────────────────
+  var signBtn = document.getElementById('btn-sign-contract');
+  if (signBtn) {
+    signBtn.addEventListener('click', function() {
+      state.draftWorld.world_contract_signed = true;
+      state.draftWorld.world_stability = state.draftWorld.world_stability || 100;
+      render();
+    });
+  }
+
+  // ── Stability slider ──────────────────────────────────────────────────────
+  var stabilityEl = document.getElementById('world-stability-slider');
+  if (stabilityEl) {
+    stabilityEl.addEventListener('input', function() {
+      state.draftWorld.world_stability = parseInt(stabilityEl.value, 10);
+    });
+  }
+
   attachVesperEvents('world');
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
@@ -5510,6 +5560,27 @@ function renderPlay() {
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Class</div><div style="color:#c084fc;font-weight:700">'+esc(c.class)+'</div></div>'
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">NPCs</div><div style="color:#4ade80;font-weight:700">'+state.npcs.length+'</div></div>'
     +'</div>'
+    // ── Narrator Style + POV mini-selector ───────────────────────────────────
+    +'<div style="margin-top:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:8px 10px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+    +'<span style="font-size:0.65rem;color:#6b7280;font-weight:600;letter-spacing:0.05em">NARRATOR</span>'
+    +'<div style="display:flex;gap:4px">'
+    +['chronicler','gamemaster','wildcard','grimdark','companion'].map(function(s){
+        var labels={chronicler:'📜',gamemaster:'🎲',wildcard:'🎭',grimdark:'💀',companion:'🌟'};
+        var active = (state.narratorStyle||'gamemaster')===s;
+        return '<button class="btn-narrator-style" data-style="'+s+'" title="'+s[0].toUpperCase()+s.slice(1)+'" style="background:'+(active?'rgba(147,51,234,0.4)':'rgba(255,255,255,0.07)')+';border:'+(active?'1px solid rgba(147,51,234,0.6)':'1px solid transparent')+';color:white;padding:3px 7px;border-radius:6px;cursor:pointer;font-size:0.85rem">'+labels[s]+'</button>';
+      }).join('')
+    +'</div></div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between">'
+    +'<span style="font-size:0.65rem;color:#6b7280;font-weight:600;letter-spacing:0.05em">POV</span>'
+    +'<div style="display:flex;gap:4px">'
+    +['first','second','third'].map(function(p){
+        var labels={first:'1st',second:'2nd',third:'3rd'};
+        var active = ((state.currentChar&&state.currentChar.pov)||'second')===p;
+        return '<button class="btn-pov-style" data-pov="'+p+'" style="background:'+(active?'rgba(96,165,250,0.3)':'rgba(255,255,255,0.07)')+';border:'+(active?'1px solid rgba(96,165,250,0.5)':'1px solid transparent')+';color:'+(active?'#93c5fd':'#9ca3af')+';padding:3px 9px;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:600">'+labels[p]+'</button>';
+      }).join('')
+    +'</div></div>'
+    +'</div>'
     +hpBar(state.charHP,100,c.name+"'s Health")
     +(state.inCombat&&state.enemy?'<div style="margin-top:8px">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div>':'')
     +(c.progression_mode!=='legend'?'<div style="margin-top:12px"><div style="color:#9ca3af;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;margin-bottom:2px">MASTERY</div><div style="color:#6b7280;font-size:0.65rem;margin-bottom:6px">Grows through how you live — fight, farm, craft, trade, study…</div>'
@@ -5741,6 +5812,26 @@ function attachPlayEvents() {
   if (state.showCrafting) attachCraftingEvents();
   // Dev panel
   if (state.devMode) attachDevPanelEvents();
+  // Narrator style buttons
+  document.querySelectorAll('.btn-narrator-style').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      state.narratorStyle = btn.dataset.style;
+      localStorage.setItem('aurora_narrator_style', state.narratorStyle);
+      render();
+    });
+  });
+  // POV buttons
+  document.querySelectorAll('.btn-pov-style').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      if (state.currentChar) {
+        state.currentChar.pov = btn.dataset.pov;
+        var chars = state.characters;
+        var ci = chars.findIndex(function(c){ return c.id === state.currentChar.id; });
+        if (ci > -1) { chars[ci].pov = btn.dataset.pov; localStorage.setItem('aurora_chars', JSON.stringify(chars)); }
+        render();
+      }
+    });
+  });
 }
 
 // ---- Boot ----
