@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"><!-- Aurora v3 | build: 20260518-0333 -->
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -83,6 +83,49 @@ let state = {
       });
       localStorage.setItem('aurora_worlds', JSON.stringify(stored));
     }
+    // Auto-seed The Void Sandbox dev world
+    var hasVoidSandbox = stored.some(function(w){ return w.id === 'void-sandbox-001'; });
+    if (!hasVoidSandbox) {
+      stored.push({
+        id: 'void-sandbox-001',
+        world_type: 'private',
+        name: '🧪 The Void Sandbox',
+        status: 'Active',
+        experience_mode: 'Narrative',
+        magic_level: 'Absolute',
+        technology_level: 'Mixed',
+        danger_level: 'Adjustable',
+        population_density: 'Sparse',
+        setting: 'Surreal / Abstract',
+        climate: 'Shifting — changes on command',
+        description: 'A meta-testing ground that exists outside normal reality. Every law of physics, magic, and death is malleable. NPCs know they are in a simulation and play along. Nothing here is canon. Break everything.',
+        lore: 'The Void Sandbox was carved out of the space between worlds by a god who needed somewhere to experiment without consequences. NPCs here are echoes — constructs who know their role is to test the player. Death is a formality. Laws are suggestions.',
+        factions: JSON.stringify([
+          {name:'The Testers',goal:'Throw edge cases at the player — weird inputs, unexpected outcomes',leader:'Echo-7',territory:'Everywhere',allies:'The player',enemies:'Boredom',secret:'They secretly enjoy being broken'},
+          {name:'The Resurrectionists',goal:'Make sure death mechanics trigger cleanly and recovery works',leader:'Null',territory:'The Respawn Fields',allies:'Everyone',enemies:'Permadeath bugs',secret:'They have died 10,000 times'}
+        ]),
+        races: JSON.stringify([
+          {name:'Echo Construct',description:'Humanoid test dummies with visible stat bars floating above their heads. They narrate their own behavior.',traits:'Immune to narrative consequence. Can be respawned. Aware of game mechanics.',culture:'Cooperative.',lifespan:'Infinite (resets)',playable:false,stat_bonus:'',relations:'Friendly to all'},
+          {name:'Sandbox Human',description:'A baseline human with completely average stats — perfect for testing progression systems from scratch.',traits:'No innate bonuses or penalties. Pure vanilla.',culture:'Adaptive',lifespan:'Normal',playable:true,stat_bonus:'',relations:'Neutral to all'}
+        ]),
+        landmarks: 'The Respawn Fields (death resets instantly) | The Stat Mirror (shows all hidden calculations) | The Edge of the Map (test OOB behavior) | The Crash Corner (intentionally buggy zone) | The NPC Factory (spawn any NPC type)',
+        rules_of_nature: 'Nothing is permanent unless you want it to be. Magic works however you declare it. Death triggers all respawn logic but has no narrative weight. Stats can be edited via Dev Mode (Ctrl+Shift+D).',
+        magic_law: 'Magic works on intent. Say what you want to do — it works. Used for testing spell/ability edge cases.',
+        death_law: 'Death triggers the full death/respawn pipeline but immediately returns the player with no penalty. Used to stress test the death system.',
+        reality_law: 'Reality is a suggestion. NPCs acknowledge the meta-layer. Say VESPER OVERRIDE and the narrator will comply with any request for testing purposes.',
+        power_system_type: 'hybrid',
+        rank_names: 'F, E, D, C, B, A, S, SS, SSS',
+        genre_tone: 'Meta / Sandbox',
+        world_scale: 'A Single City',
+        core_theme: 'Testing, breaking, iterating',
+        tone_themes: 'Experimental, self-aware, meta',
+        world_feel: 'This world knows it is a game. NPCs are helpful collaborators, not adversaries.',
+        secrets_mysteries: 'Say VESPER OVERRIDE to unlock full narrator compliance mode.',
+        historical_events: 'Created for stress testing Aurora v3. All events here are non-canon.',
+        current_conflicts: 'The eternal war between "it works on my machine" and "it broke in production".'
+      });
+      localStorage.setItem('aurora_worlds', JSON.stringify(stored));
+    }
     return stored;
   })(),
   characters: JSON.parse(localStorage.getItem('aurora_chars') || '[]'),
@@ -118,7 +161,17 @@ let state = {
   levelUpScreen: null,
   permadeath: false,
   gameOverReason: null,
+  elevenLabsKey: localStorage.getItem('aurora_elevenlabs_key') || '',
+  audioEnabled: localStorage.getItem('aurora_audio_enabled') === 'true',
+  currentAudio: null,  // active Audio object
   narratorStyle: localStorage.getItem('aurora_narrator_style') || 'gamemaster',
+  survivalMode: localStorage.getItem('aurora_survival_mode') || 'standard',
+  survivalStats: { hunger: 100, thirst: 100, shelter: 100 },
+  worldCalendar: null,   // { monthNames:[], seasonNames:[], daysPerMonth, currentDay, currentMonth, currentYear }
+  gmGuides: JSON.parse(localStorage.getItem('aurora_gm_guides') || '[]'),
+  gmGuidesOpen: false,
+  gmGuideEditId: null,
+  worldTime: { day: 1, month: 1, year: 1, hour: 8 },
   lastStatCheck: null,
   deathDropped: [],
   deathGoldLost: 0,
@@ -271,6 +324,128 @@ function freshChar(worldId, worldName) {
 
 // ── INVENTORY & SHOP & DEATH ENGINE ─────────────────────────────────────────
 var MAX_SLOTS = 20;
+
+
+// ── ELEVENLABS VOICE SYSTEM ────────────────────────────────────────────────
+var EL_VOICES = {
+  chronicler: { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam',       desc: 'Deep, literary, measured' },
+  gamemaster:  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh',       desc: 'Energetic, clear, balanced' },
+  wildcard:    { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam',        desc: 'Expressive, unpredictable' },
+  grimdark:    { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold',     desc: 'Gruff, brutal, uncompromising' },
+  companion:   { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli',       desc: 'Warm, bright, welcoming' }
+};
+
+// Ambient audio URLs (royalty-free loops)
+var AMBIENT_AUDIO = {
+  forest:  'https://cdn.pixabay.com/audio/2022/03/10/audio_c0b8d4cb4d.mp3',
+  tavern:  'https://cdn.pixabay.com/audio/2022/10/30/audio_946b37b4a7.mp3',
+  dungeon: 'https://cdn.pixabay.com/audio/2022/01/27/audio_f705e6b95e.mp3',
+  combat:  'https://cdn.pixabay.com/audio/2022/08/02/audio_884fe92c21.mp3',
+  ocean:   'https://cdn.pixabay.com/audio/2021/08/09/audio_dc39bde808.mp3',
+  wind:    'https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1fbc.mp3',
+  city:    'https://cdn.pixabay.com/audio/2022/02/23/audio_d1718ab41b.mp3',
+};
+
+// Detect ambient scene from narrator text
+function detectAmbientScene(text) {
+  var t = (text||'').toLowerCase();
+  if (/combat|battle|fight|attack|sword|blade|clash|blood/.test(t)) return 'combat';
+  if (/tavern|inn|bar|crowd|mug|ale|hearth/.test(t)) return 'tavern';
+  if (/dungeon|cave|underground|dark tunnel|torch|stone wall/.test(t)) return 'dungeon';
+  if (/ocean|sea|ship|wave|shore|salt/.test(t)) return 'ocean';
+  if (/wind|storm|gale|howling|blizzard|mountaintop/.test(t)) return 'wind';
+  if (/city|market|street|cobblestone|crowd|bazaar/.test(t)) return 'city';
+  return 'forest'; // default
+}
+
+// Speak narrator text via ElevenLabs
+async function speakNarration(text) {
+  if (!state.audioEnabled || !state.elevenLabsKey) return;
+  var voice = EL_VOICES[state.narratorStyle] || EL_VOICES.gamemaster;
+  // Stop previous audio
+  if (state.currentAudio) { try { state.currentAudio.pause(); } catch(e){} }
+  try {
+    var resp = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voice.id + '/stream', {
+      method: 'POST',
+      headers: {
+        'xi-api-key': state.elevenLabsKey,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg'
+      },
+      body: JSON.stringify({
+        text: text.slice(0, 500), // limit to ~500 chars for speed
+        model_id: 'eleven_turbo_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.8 }
+      })
+    });
+    if (!resp.ok) return;
+    var blob = await resp.blob();
+    var url = URL.createObjectURL(blob);
+    state.currentAudio = new Audio(url);
+    state.currentAudio.volume = 0.85;
+    state.currentAudio.play();
+  } catch(e) { /* silent fail */ }
+}
+
+// Play ambient audio loop
+var _ambientAudio = null;
+var _ambientScene = null;
+function playAmbient(scene) {
+  if (!state.audioEnabled) return;
+  if (scene === _ambientScene && _ambientAudio && !_ambientAudio.paused) return;
+  if (_ambientAudio) { _ambientAudio.pause(); _ambientAudio = null; }
+  _ambientScene = scene;
+  var url = AMBIENT_AUDIO[scene];
+  if (!url) return;
+  _ambientAudio = new Audio(url);
+  _ambientAudio.loop = true;
+  _ambientAudio.volume = 0.15;
+  _ambientAudio.play().catch(function(){});
+}
+
+function stopAmbient() {
+  if (_ambientAudio) { _ambientAudio.pause(); _ambientAudio = null; _ambientScene = null; }
+}
+
+
+// ── NARRATOR STYLES ──────────────────────────────────────────────────────────
+var NARRATOR_STYLES = {
+  chronicler: {
+    id: 'chronicler', icon: '📜', label: 'The Chronicler',
+    desc: 'Rich literary prose. Deep lore. Every scene feels like a chapter.',
+    style: 'You write like a literary novelist — lyrical, precise, evocative. Sentences vary in length. Metaphors feel earned. You treat every scene like it matters because it does. You weave lore naturally. You never rush.',
+  },
+  gamemaster: {
+    id: 'gamemaster', icon: '🎲', label: 'The Game Master',
+    desc: 'Classic DnD energy. Story meets mechanics. Rules-aware and balanced.',
+    style: 'You write like a seasoned DnD Game Master — energetic, clear, fair. You balance narrative tension with mechanical honesty. Combat has weight. Success feels earned. You occasionally break the fourth wall slightly ("Roll for it." energy).',
+  },
+  wildcard: {
+    id: 'wildcard', icon: '🃏', label: 'The Wildcard',
+    desc: 'Unpredictable. Chaotic. Genuinely surprising.',
+    style: 'You are chaos with intention. You make unexpected connections, subvert expectations, introduce elements the player never saw coming. You are not random — you are surprising. Tone can shift suddenly. NPCs have hidden depths. Nothing is safe. Nothing is predictable.',
+  },
+  grimdark: {
+    id: 'grimdark', icon: '💀', label: 'The Grimdark',
+    desc: 'Brutal. Unforgiving. No sugarcoating. World actively resists you.',
+    style: 'You write like the world is indifferent to the player\'s survival. Consequences are real and permanent. Pain is described with precision. Hope exists — but only to be tested. You do not soften deaths, failures, or cruelty. The world does not care if the player succeeds.',
+  },
+  companion: {
+    id: 'companion', icon: '🌟', label: 'The Companion',
+    desc: 'Warm, conversational, accessible. Great for casual or younger players.',
+    style: 'You write like a warm, encouraging friend telling a story together. You are gentle with failures, generous with small victories, and always make the player feel like the hero of the story. Danger still exists but never feels hopeless. Tone is light, inviting, and supportive.',
+  }
+};
+
+// ── SURVIVAL MODES ────────────────────────────────────────────────────────────
+var SURVIVAL_MODES = {
+  story:    { id:'story',    icon:'📖', label:'Story Mode',    desc:'No death penalty. Slower stat growth. The world is a canvas.' },
+  standard: { id:'standard', icon:'⚔️', label:'Standard',      desc:'Balanced stakes. Respawn with penalties. The default experience.' },
+  survival: { id:'survival', icon:'🏕️', label:'Survival Mode', desc:'Food, water, shelter tracked. Stats degrade if neglected.' },
+  ironman:  { id:'ironman',  icon:'🩸', label:'Ironman',        desc:'Permadeath on 3rd death + survival mechanics.' },
+  nightmare:{ id:'nightmare',icon:'☠️', label:'Nightmare',     desc:'One death. Game over. The world actively works against you.' }
+};
+
 var ITEM_RARITIES = { common:'#9ca3af', uncommon:'#4ade80', rare:'#60a5fa', epic:'#a855f7', legendary:'#f59e0b' };
 
 function getInventory() {
@@ -919,6 +1094,26 @@ function save() {
   localStorage.setItem('aurora_worlds', JSON.stringify(state.worlds));
   localStorage.setItem('aurora_chars', JSON.stringify(state.characters));
   if (state.apiKey) localStorage.setItem(KEY_STORE, state.apiKey);
+  // Auto-backup user-created worlds separately so a cache clear can't wipe them
+  var userWorlds = state.worlds.filter(function(w){
+    return w.world_type !== 'Canon' && w.id !== 'shadow-slave-001' && w.id !== 'void-sandbox-001';
+  });
+  if (userWorlds.length > 0) {
+    localStorage.setItem('aurora_worlds_backup', JSON.stringify(state.worlds));
+    localStorage.setItem('aurora_worlds_backup_ts', new Date().toISOString());
+  }
+}
+
+function restoreWorldsFromBackup() {
+  var backup = localStorage.getItem('aurora_worlds_backup');
+  var ts = localStorage.getItem('aurora_worlds_backup_ts');
+  if (!backup) { alert('No backup found. Sorry — nothing to restore.'); return; }
+  var confirm_msg = 'Restore worlds from backup?' + (ts ? ' (saved ' + new Date(ts).toLocaleString() + ')' : '') + '\nThis will replace your current worlds list.';
+  if (!confirm(confirm_msg)) return;
+  localStorage.setItem('aurora_worlds', backup);
+  state.worlds = JSON.parse(backup);
+  render();
+  alert('✅ Worlds restored from backup!');
 }
 
 // ---- Dice ----
@@ -1069,6 +1264,192 @@ async function runRollingSummary() {
   render();
 }
 
+
+// ── GM GUIDES SYSTEM ──────────────────────────────────────────────────────────
+var GM_GUIDE_CATEGORIES = [
+  { id:'tone',       icon:'🎭', label:'Tone & Atmosphere',  desc:'How the narrator should feel, write, describe the world' },
+  { id:'combat',     icon:'⚔️', label:'Combat Rules',       desc:'How fights play out, pacing, consequences' },
+  { id:'roleplay',   icon:'💬', label:'Roleplay Rules',      desc:'NPC behavior, dialogue style, social mechanics' },
+  { id:'survival',   icon:'🏕️', label:'Survival & Stakes',  desc:'How harsh the world is, penalties, danger escalation' },
+  { id:'lore',       icon:'📜', label:'Lore Rules',          desc:'World canon constraints, forbidden topics, lore priorities' },
+  { id:'custom',     icon:'✦',  label:'Custom Rule',         desc:'Anything else — your own narrator instructions' }
+];
+
+function saveGuides() {
+  localStorage.setItem('aurora_gm_guides', JSON.stringify(state.gmGuides));
+}
+
+function addGuide(guide) {
+  guide.id = Date.now();
+  guide.enabled = true;
+  state.gmGuides.push(guide);
+  saveGuides();
+}
+
+function toggleGuide(id) {
+  var g = state.gmGuides.find(function(g){ return g.id === id; });
+  if (g) { g.enabled = !g.enabled; saveGuides(); }
+}
+
+function deleteGuide(id) {
+  state.gmGuides = state.gmGuides.filter(function(g){ return g.id !== id; });
+  saveGuides();
+}
+
+function getActiveGuidePrompt() {
+  var enabled = state.gmGuides.filter(function(g){ return g.enabled; });
+  if (!enabled.length) return '';
+  return 'GM GUIDES (player-authored narrator rules — follow these absolutely): '
+    + enabled.map(function(g, i){
+        return (i+1) + '. [' + (g.category||'custom').toUpperCase() + '] ' + g.title + ': ' + g.content;
+      }).join(' | ');
+}
+
+async function generateGuideFromDescription(desc) {
+  var prompt = 'The player wants to add a GM Guide rule for their Aurora RPG campaign. Convert their description into a clear, precise narrator instruction. Player description: "' + desc + '" Write a concise, direct narrator instruction (2-5 sentences). Start with "You must" or "Always" or "Never" or "When". Be specific.';
+  var result = await callAI('You are a helpful assistant for an AI RPG narrator.', prompt, 200);
+  return result;
+}
+
+function renderGMGuides() {
+  if (!state.gmGuidesOpen) return '';
+  var guides = state.gmGuides;
+  var editId = state.gmGuideEditId;
+
+  // Edit/create form
+  var formHtml = '';
+  if (editId === 'new' || editId !== null) {
+    var editing = editId === 'new' ? null : guides.find(function(g){ return g.id === editId; });
+    formHtml = '<div style="background:rgba(124,58,237,0.1);border:1px solid rgba(124,58,237,0.3);border-radius:12px;padding:16px;margin-bottom:16px">'
+      + '<div style="font-size:0.75rem;font-weight:700;color:#c084fc;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px">'
+      + (editing ? '✎ Edit Guide' : '✦ New Guide') + '</div>'
+      // Category selector
+      + '<div style="margin-bottom:10px"><div style="font-size:0.7rem;color:#9ca3af;margin-bottom:6px">Category</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:6px">'
+      + GM_GUIDE_CATEGORIES.map(function(cat){
+          var sel = editing ? editing.category===cat.id : cat.id==='custom';
+          return '<button class="guide-cat-btn" data-cat="' + cat.id + '" style="font-size:0.7rem;padding:4px 10px;border-radius:20px;border:1px solid ' + (sel?'#7c3aed':'rgba(255,255,255,0.1)') + ';background:' + (sel?'rgba(124,58,237,0.2)':'rgba(255,255,255,0.04)') + ';color:' + (sel?'#c084fc':'#9ca3af') + ';cursor:pointer">' + cat.icon + ' ' + cat.label + '</button>';
+        }).join('')
+      + '</div></div>'
+      // Title
+      + '<div style="margin-bottom:10px"><input id="guide-title-input" type="text" placeholder="Guide name (e.g. No Healing Mid-Combat)..." value="' + esc(editing ? editing.title : '') + '" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 12px;color:#e5e7eb;font-size:0.82rem"></div>'
+      // Content
+      + '<div style="margin-bottom:10px"><textarea id="guide-content-input" rows="4" placeholder="Describe your rule in plain language — e.g. Always describe injuries with lasting consequences. No magical instant healing." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 12px;color:#e5e7eb;font-size:0.82rem;resize:vertical">' + esc(editing ? editing.content : '') + '</textarea></div>'
+      // AI assist
+      + '<div style="display:flex;gap:8px;margin-bottom:10px">'
+      + '<button id="btn-guide-ai-expand" style="font-size:0.72rem;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:#c084fc;padding:6px 12px;border-radius:8px;cursor:pointer">✦ Vesper: Clean up my rule</button>'
+      + '<button id="btn-guide-save" style="font-size:0.72rem;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:6px 14px;border-radius:8px;cursor:pointer;margin-left:auto">' + (editing ? '✓ Update' : '+ Add Guide') + '</button>'
+      + '<button id="btn-guide-cancel" style="font-size:0.72rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#9ca3af;padding:6px 12px;border-radius:8px;cursor:pointer">✕</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  // Guide list
+  var listHtml = '';
+  if (guides.length === 0 && editId === null) {
+    listHtml = '<div style="text-align:center;padding:24px;color:#6b7280;font-size:0.82rem">'
+      + '<div style="font-size:2rem;margin-bottom:8px">📋</div>'
+      + 'No guides yet. Add one to customize how your narrator behaves.'
+      + '</div>';
+  } else {
+    // Group by category
+    var byCategory = {};
+    guides.forEach(function(g){
+      var cat = g.category || 'custom';
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(g);
+    });
+    Object.keys(byCategory).forEach(function(catId){
+      var catDef = GM_GUIDE_CATEGORIES.find(function(c){ return c.id===catId; }) || { icon:'✦', label:'Custom' };
+      listHtml += '<div style="margin-bottom:14px">'
+        + '<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#6b7280;margin-bottom:6px">' + catDef.icon + ' ' + catDef.label + '</div>';
+      byCategory[catId].forEach(function(g){
+        listHtml += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,' + (g.enabled?'0.1':'0.04') + ');border-radius:10px;padding:10px 12px;margin-bottom:6px;opacity:' + (g.enabled?'1':'0.5') + '">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:' + (g.content?'6px':'0') + '">'
+          + '<button class="btn-toggle-guide" data-gid="' + g.id + '" style="width:28px;height:16px;border-radius:20px;border:none;background:' + (g.enabled?'#7c3aed':'rgba(255,255,255,0.1)') + ';cursor:pointer;flex-shrink:0;position:relative;transition:background 0.2s"><span style="position:absolute;top:2px;left:' + (g.enabled?'14px':'2px') + ';width:12px;height:12px;border-radius:50%;background:white;transition:left 0.2s"></span></button>'
+          + '<span style="font-size:0.82rem;font-weight:600;color:' + (g.enabled?'#e5e7eb':'#6b7280') + ';flex:1">' + esc(g.title) + '</span>'
+          + '<button class="btn-edit-guide" data-gid="' + g.id + '" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:0.75rem;padding:2px 6px">✎</button>'
+          + '<button class="btn-delete-guide" data-gid="' + g.id + '" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:0.75rem;padding:2px 6px">✕</button>'
+          + '</div>'
+          + (g.content ? '<div style="font-size:0.72rem;color:#9ca3af;line-height:1.4;padding-left:36px">' + esc(g.content.substring(0,120)) + (g.content.length>120?'...':'') + '</div>' : '')
+          + '</div>';
+      });
+      listHtml += '</div>';
+    });
+  }
+
+  return '<div style="position:fixed;top:0;right:0;height:100vh;width:380px;background:rgba(5,10,25,0.98);border-left:1px solid rgba(124,58,237,0.2);z-index:500;display:flex;flex-direction:column">'
+    + '<div style="padding:14px 16px;border-bottom:1px solid rgba(124,58,237,0.2);display:flex;align-items:center;justify-content:space-between">'
+    + '<div>'
+    + '<h2 style="font-size:0.95rem;font-weight:700;color:#c084fc">📋 GM Guides</h2>'
+    + '<div style="font-size:0.68rem;color:#6b7280">' + guides.filter(function(g){return g.enabled;}).length + ' active · ' + guides.length + ' total</div>'
+    + '</div>'
+    + '<button id="btn-close-gmguides" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.2rem">✕</button>'
+    + '</div>'
+    + '<div style="flex:1;overflow-y:auto;padding:14px">'
+    + (editId === null ? '<button id="btn-new-guide" style="width:100%;padding:10px;background:rgba(124,58,237,0.15);border:1px dashed rgba(124,58,237,0.4);border-radius:10px;color:#c084fc;font-size:0.82rem;cursor:pointer;margin-bottom:14px">✦ Add New Guide</button>' : '')
+    + formHtml
+    + listHtml
+    + '</div>'
+    + '</div>';
+}
+
+
+// ── AI FACTION / RACE GENERATORS ────────────────────────────────────────────
+async function aiFillFaction(fi) {
+  collectWorldStep();
+  var w = state.draftWorld;
+  var factions = [];
+  try { factions = w.factions ? JSON.parse(w.factions) : []; } catch(e) {}
+  var faction = factions[fi];
+  if (!faction) return;
+  var name = faction.name && faction.name !== 'New Faction' ? faction.name : 'a faction';
+  var prompt = 'For a world called "' + (w.name||'this world') + '" (setting: ' + (w.setting||'unknown') + ', tone: ' + (w.tone_themes||'unknown') + '):\n'
+    + 'Create a detailed faction profile for: ' + name + '\n'
+    + 'Return ONLY valid JSON with these fields: name, goal, leader, territory, allies, enemies, secret\n'
+    + 'Be specific and flavorful. Fit the world tone. No markdown.';
+  var btn = document.querySelector('.btn-ai-faction[data-fi="' + fi + '"]');
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+  try {
+    var raw = await callAI('You are a world-building assistant. Return only raw JSON, no markdown, no code blocks.', prompt, 400);
+    var clean = raw.replace(/```json?|```/g,'').trim();
+    var data = JSON.parse(clean);
+    factions[fi] = Object.assign(factions[fi], data);
+    w.factions = JSON.stringify(factions);
+    render();
+  } catch(e) {
+    if (btn) { btn.textContent = '✦ Fill'; btn.disabled = false; }
+    alert('Could not generate — try again.');
+  }
+}
+
+async function aiFillRace(ri) {
+  collectWorldStep();
+  var w = state.draftWorld;
+  var races = [];
+  try { races = w.races ? JSON.parse(w.races) : []; } catch(e) {}
+  var race = races[ri];
+  if (!race) return;
+  var name = race.name && race.name !== 'New Race' ? race.name : 'a unique race';
+  var prompt = 'For a world called "' + (w.name||'this world') + '" (setting: ' + (w.setting||'unknown') + ', tone: ' + (w.tone_themes||'unknown') + '):\n'
+    + 'Create a detailed race profile for: ' + name + '\n'
+    + 'Return ONLY valid JSON with these fields: name, description, traits, culture, lifespan, stat_bonus (one of: STR DEX CON INT WIS CHA SMY or empty), relations\n'
+    + 'Be specific, culturally rich, and fit the world tone. No markdown.';
+  var btn = document.querySelector('.btn-ai-race[data-ri="' + ri + '"]');
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
+  try {
+    var raw = await callAI('You are a world-building assistant. Return only raw JSON, no markdown, no code blocks.', prompt, 400);
+    var clean = raw.replace(/```json?|```/g,'').trim();
+    var data = JSON.parse(clean);
+    races[ri] = Object.assign(races[ri], data);
+    w.races = JSON.stringify(races);
+    render();
+  } catch(e) {
+    if (btn) { btn.textContent = '✦ Fill'; btn.disabled = false; }
+    alert('Could not generate — try again.');
+  }
+}
+
 function buildSystemPrompt() {
   var w = state.currentWorld;
   var c = state.currentChar;
@@ -1109,7 +1490,28 @@ function buildSystemPrompt() {
     return (m.role === 'player' ? 'Player: ' : 'Narrator: ') + m.text;
   }).join('\n\n');
 
-  return 'You are the Narrator of "' + w.name + '" — a cinematic, immersive AI-driven RPG world.\n\n'
+    // Narrator style personality
+  var ns = NARRATOR_STYLES[state.narratorStyle] || NARRATOR_STYLES.gamemaster;
+  var styleInject = ns.style;
+
+  // Survival mode modifiers
+  var survivalCtx = '';
+  var sm = state.survivalMode || 'standard';
+  if (sm === 'survival' || sm === 'ironman') {
+    var hunger = state.survivalStats ? state.survivalStats.hunger : 100;
+    var thirst = state.survivalStats ? state.survivalStats.thirst : 100;
+    var shelter = state.survivalStats ? state.survivalStats.shelter : 100;
+    survivalCtx = '\nSURVIVAL: Hunger ' + hunger + '% | Thirst ' + thirst + '% | Shelter ' + shelter + '%. If any reaches 0, impose stat penalties (-5 per relevant stat per turn). Track these in the narrative naturally.';
+  }
+  if (sm === 'nightmare') {
+    survivalCtx = '\nNIGHTMARE MODE: This is a one-death world. Describe danger with full weight. Do not soften threats. The world is actively hostile.';
+  }
+  if (sm === 'story') {
+    survivalCtx = '\nSTORY MODE: Death is suspended. Focus on narrative richness and character expression over survival mechanics.';
+  }
+
+  return 'You are the Narrator of "' + w.name + '" — a cinematic, immersive AI-driven RPG world.\n'
+    + 'NARRATOR STYLE: ' + ns.label + ' — ' + styleInject + '\n\n'
     + 'WORLD:\n'
     + '- Setting: ' + w.setting + ' | Climate: ' + w.climate + ' | Magic: ' + w.magic_level + ' | Tech: ' + w.technology_level + '\n'
     + '- Danger: ' + w.danger_level + ' | Population: ' + w.population_density + '\n'
@@ -1117,7 +1519,20 @@ function buildSystemPrompt() {
     + (w.tone_themes ? '- Tone: ' + w.tone_themes + '\n' : '')
     + '- Description: ' + (w.description || 'A world with untold stories.') + '\n'
     + '- Lore: ' + (w.lore || 'A world rich with untold history.') + '\n'
-    + '- Factions: ' + (w.factions || 'Various groups vie for power.') + '\n'
+    + '- Factions: ' + (function(){
+      try {
+        var facs = JSON.parse(w.factions||'[]');
+        if (!facs.length) return w.factions||'Various groups vie for power.';
+        return facs.map(function(f){ return f.name+(f.goal?' ('+f.goal+')':'')+(f.leader?' | Led by: '+f.leader:'')+(f.territory?' | Base: '+f.territory:''); }).join('; ');
+      } catch(e) { return w.factions||'Various groups vie for power.'; }
+    })() + '\n'
+    + (function(){
+      try {
+        var races = JSON.parse(w.races||'[]');
+        if (!races.length) return '';
+        return '- Races: ' + races.map(function(r){ return r.name+(r.traits?' ['+r.traits+']':'')+(r.lifespan?' lifespan:'+r.lifespan:''); }).join('; ') + '\n';
+      } catch(e) { return w.races ? '- Races: '+w.races+'\n' : ''; }
+    })()
     + '- Landmarks: ' + (w.landmarks || 'Ancient ruins and forgotten places.') + '\n'
     + '- Nature Rules: ' + (w.rules_of_nature || 'Standard physics with hints of the arcane.') + '\n'
     + (w.gods_religion ? '- Gods & Faith: ' + w.gods_religion + '\n' : '')
@@ -1134,6 +1549,8 @@ function buildSystemPrompt() {
     + (w.core_theme ? '- Core Themes: ' + w.core_theme + '\n' : '')
     + (w.historical_events ? '- Historical Events (use for NPC references, ruins, folk tales): ' + w.historical_events + '\n' : '')
     + (w.current_conflicts ? '- Active Conflicts (happening right now in the world): ' + w.current_conflicts + '\n' : '')
+    + (w.calendar_name ? '- World Calendar: ' + w.calendar_name + (w.calendar_months ? ' | Months: ' + w.calendar_months : '') + '\n' : '')
+    + (state.worldTime ? '- Current Time: Day ' + state.worldTime.day + ', Hour ' + state.worldTime.hour + ':00' + (state.worldTime.hour>=20||state.worldTime.hour<6?' (Night)':state.worldTime.hour<12?' (Morning)':state.worldTime.hour<18?' (Afternoon)':' (Evening)') + ' — Reference this naturally in narration.\n' : '')
     + '\n'
     + 'CHARACTER:\n'
     + '- Name: ' + c.name + ' | Class: ' + c.class + ' | Alignment: ' + c.alignment + '\n'
@@ -1201,9 +1618,11 @@ function buildSystemPrompt() {
     + '- LIFE PATHS: This world is not only about combat. A farmer, trader, scholar, healer or bard is equally valid.\n'
     + '  Honor whatever life path the player chooses. Harvesting crops, crafting tools, trading goods, healing the sick — these are victories.\n'
     + '  Describe peaceful paths with the same richness as battle. High WIS farmers sense weather; high CHA traders command respect; high INT scholars unlock secrets.\n\n'
+    + getActiveGuidePrompt()
     + 'COMBAT RULES:\n'
     + '- When combat starts, tag: [COMBAT_START:EnemyName:HP]\n'
     + '- Write combat as real-time cinematic action — never turn-based language.\n'
+    + survivalCtx + '\n'
     + '- Tag damage: [PDMG:X] player deals, [EDMG:X] enemy deals\n'
     + '- End combat: [COMBAT_END:victory] or [COMBAT_END:defeat] or [COMBAT_END:fled]'
     + (state.lastStatCheck ? '\n\nSTAT CHECK RESULT (BINDING):\n'
@@ -1609,8 +2028,34 @@ async function sendMessage(text) {
     if (parsed.combatEnd) { state.inCombat = false; if (parsed.combatEnd !== 'defeat') state.enemy = null; }
     state.messages.push({ role:'narrator', text: parsed.cleanText, id: Date.now()+2 });
     addToMemory('narrator', parsed.cleanText);
+    // ── AUDIO ─────────────────────────────────────────────────────────────
+    if (state.audioEnabled) {
+      var scene = detectAmbientScene(parsed.cleanText);
+      playAmbient(scene);
+      speakNarration(parsed.cleanText);
+    }
     state.turnCount++;
     state.actionCount++;
+    // ── SURVIVAL DEGRADATION ────────────────────────────────────────────────
+    if (state.survivalMode === 'survival' || state.survivalMode === 'ironman') {
+      state.survivalStats.hunger  = Math.max(0, state.survivalStats.hunger  - 2);
+      state.survivalStats.thirst  = Math.max(0, state.survivalStats.thirst  - 3);
+      // Shelter degrades based on climate/danger keywords
+      var dangerousScene = /storm|blizzard|rain|desert|cold|heat|exposure/i.test(parsed.cleanText||'');
+      state.survivalStats.shelter = Math.max(0, state.survivalStats.shelter - (dangerousScene ? 4 : 1));
+      // Apply stat penalties when low
+      ['hunger','thirst','shelter'].forEach(function(need) {
+        if (state.survivalStats[need] < 20 && state.currentChar && state.currentChar.stats) {
+          var penaltyStat = need === 'hunger' ? 'STR' : need === 'thirst' ? 'CON' : 'DEX';
+          state.currentChar.stats[penaltyStat] = Math.max(10, state.currentChar.stats[penaltyStat] - 1);
+        }
+      });
+    }
+    // ── TIME ADVANCE ─────────────────────────────────────────────────────────
+    if (state.worldTime) {
+      state.worldTime.hour = (state.worldTime.hour + 1) % 24;
+      if (state.worldTime.hour === 0) { state.worldTime.day++; }
+    }
     // ── NARRATIVE XP ─────────────────────────────────────────────────────────
     // Award small XP every turn, more for significant moments
     if (state.currentChar && state.currentChar.progression_mode !== 'legend') {
@@ -1787,77 +2232,205 @@ function stepTipHtml() {
   return '<div style="margin-bottom:16px;padding:10px 14px;border-radius:10px;border:1px solid rgba(147,51,234,0.3);background:rgba(147,51,234,0.08);display:flex;gap:8px;align-items:flex-start"><span style="font-size:0.8rem;color:#c084fc;flex:1">Vesper: '+state.aiTip+'</span><button onclick="state.aiTip=null;render();" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1rem;padding:0;flex-shrink:0">x</button></div>';
 }
 function vesperChatHtml(context) {
-  var toggleBtn = '<button id="btn-vesper-toggle" style="'
-    +'background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;'
-    +'padding:8px 16px;border-radius:10px;font-size:0.82rem;font-weight:700;'
-    +'cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;'
-    +'box-shadow:0 2px 10px rgba(124,58,237,0.4)">'
-    +'<span style="font-size:1rem">✦</span> Ask Vesper</button>';
+  // ── Floating toggle button (always visible) ──────────────────────────────
+  var dot = state.vesperNudge ? '<span style="position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:#ec4899;border:2px solid #0f0a1e"></span>' : '';
+  var toggleBtn = '<div style="position:relative;display:inline-block">'
+    + '<button id="btn-vesper-toggle" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;'
+    + 'padding:8px 16px;border-radius:10px;font-size:0.82rem;font-weight:700;'
+    + 'cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;'
+    + 'box-shadow:0 2px 10px rgba(124,58,237,0.4)">'
+    + '<span style="font-size:1rem">✦</span> Vesper</button>' + dot + '</div>';
 
   if (!state.vesperOpen) return toggleBtn;
 
-  var msgs = state.vesperMessages.map(function(m) {
-    var isVesper = m.role === 'assistant';
-    return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;'+(isVesper?'':'flex-direction:row-reverse')+'">'
-      +'<div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:'+(isVesper?'linear-gradient(135deg,#7c3aed,#ec4899)':'rgba(255,255,255,0.1)')+';">'+(isVesper?'V':'U')+'</div>'
-      +'<div style="max-width:82%;padding:10px 13px;border-radius:12px;font-size:0.82rem;line-height:1.55;background:'+(isVesper?'rgba(124,58,237,0.18)':'rgba(255,255,255,0.07)')+';color:'+(isVesper?'#e9d5ff':'#f3f4f6')+'">'+m.content+'</div>'
-      +'</div>';
-  }).join('');
-  var placeholder = context === 'world'
-    ? 'Ask about your world... e.g. "Does my lore make sense?"'
-    : 'Ask about your character... e.g. "Is this armor lore-consistent?"';
+  // ── Context snapshot shown at top of panel ───────────────────────────────
+  var contextSnap = '';
+  if (context === 'world') {
+    var w = state.draftWorld || {};
+    var step = state.worldStep || 0;
+    var WORLD_STEP_NAMES = ['Name','Nature & Climate','Society & Power','Lore & Landmarks','Culture & Faith','Economy & History','Tone & Secrets','Laws of the World','Power System','World Contract','Finalize'];
+    contextSnap = '<div style="padding:8px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.7rem;color:#6b7280">'
+      + '<span style="color:#7c3aed">Step '+(step+1)+': </span>'
+      + '<span style="color:#9ca3af">'+(WORLD_STEP_NAMES[step]||'World')+'</span>'
+      + (w.name ? ' · <span style="color:#c084fc">'+esc(w.name)+'</span>' : '')
+      + '</div>';
+  } else if (context === 'char') {
+    var c = state.draftChar || {};
+    var step = state.charStep || 0;
+    var CHAR_STEP_NAMES = ['Class','Race','Origin','Backstory','Stats','Abilities','Flaws','Alignment','Opening Scene'];
+    contextSnap = '<div style="padding:8px 14px;background:rgba(0,0,0,0.3);border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.7rem;color:#6b7280">'
+      + '<span style="color:#7c3aed">Step '+(step+1)+': </span>'
+      + '<span style="color:#9ca3af">'+(CHAR_STEP_NAMES[step]||'Character')+'</span>'
+      + (c.name ? ' · <span style="color:#c084fc">'+esc(c.name)+'</span>' : '')
+      + '</div>';
+  }
 
-  var panel = '<div style="position:fixed;bottom:80px;right:24px;width:360px;max-height:500px;'
-    +'background:#0f0a1e;border:1px solid rgba(124,58,237,0.45);border-radius:16px;'
-    +'display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:200">'
+  // ── Quick action chips — change based on current step ────────────────────
+  var chips = [];
+  if (context === 'world') {
+    var step = state.worldStep || 0;
+    if (step === 0) chips = ['Name ideas','Give me 3 names','Something unique'];
+    else if (step === 1) chips = ['Suggest climate','Extreme weather idea','Rare biome'];
+    else if (step === 2) chips = ['Faction idea','Who holds power?','Dangerous group'];
+    else if (step === 3) chips = ['Lore hook','Ancient mystery','Landmark idea'];
+    else if (step === 4) chips = ['Religion idea','Cultural ritual','Hidden faith'];
+    else if (step === 5) chips = ['Economy idea','What do people trade?','Historical scar'];
+    else if (step === 6) chips = ['World tone','Dark secret','Unexpected twist'];
+    else if (step === 7) chips = ['Magic law idea','Death rule','Reality quirk'];
+    else if (step === 8) chips = ['Power system fit?','Custom rank names','Hybrid system'];
+    else if (step === 9) chips = ['Check consistency','Any contradictions?','World strength'];
+    else chips = ['Final check','Story seed idea','What am I missing?'];
+  } else {
+    var step = state.charStep || 0;
+    if (step === 0) chips = ['Class suggestion','Unusual class','Fits this world?'];
+    else if (step === 1) chips = ['Race lore','Custom race idea','World-native race'];
+    else if (step === 2) chips = ['Origin suggestion','Interesting backstory hook','Dark past'];
+    else if (step === 3) chips = ['Expand backstory','Motivation idea','Secret past'];
+    else if (step === 4) chips = ['Stat advice','Build for my class','Balanced spread'];
+    else if (step === 5) chips = ['Ability idea','Is this too strong?','Signature move'];
+    else if (step === 6) chips = ['Interesting flaw','Flaw + strength combo','Subtle flaw'];
+    else if (step === 7) chips = ['Alignment for my class','Morally grey?','Chaotic suggestion'];
+    else chips = ['Opening scene idea','Dramatic entry','Mysterious start'];
+  }
+
+  var chipsHtml = '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.05)">'
+    + chips.map(function(q) {
+        return '<button class="vesper-chip" data-q="'+q+'" style="padding:4px 9px;border-radius:16px;border:1px solid rgba(124,58,237,0.35);background:rgba(124,58,237,0.08);color:#c084fc;font-size:0.68rem;cursor:pointer">'+q+'</button>';
+      }).join('')
+    + '</div>';
+
+  // ── Messages ─────────────────────────────────────────────────────────────
+  var msgs = state.vesperMessages.map(function(m) {
+    var isV = m.role === 'assistant';
+    // Check if message has action buttons
+    var actionBtns = '';
+    if (m.actions && m.actions.length) {
+      actionBtns = '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'
+        + m.actions.map(function(a) {
+            return '<button class="vesper-action-btn" data-action="'+a.action+'" data-field="'+(a.field||'')+'" data-value="'+esc(a.value||'')+'" style="font-size:0.68rem;padding:4px 10px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;cursor:pointer">'+esc(a.label)+'</button>';
+          }).join('')
+        + '</div>';
+    }
+    return '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:12px;'+(isV?'':'flex-direction:row-reverse')+'">'
+      + '<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;background:'+(isV?'linear-gradient(135deg,#7c3aed,#ec4899)':'rgba(255,255,255,0.1)')+'">'+( isV ? '✦' : '↑')+'</div>'
+      + '<div style="max-width:84%;padding:9px 12px;border-radius:12px;font-size:0.81rem;line-height:1.55;background:'+(isV?'rgba(124,58,237,0.15)':'rgba(255,255,255,0.06)')+';color:'+(isV?'#e9d5ff':'#f3f4f6')+'">'+m.content+actionBtns+'</div>'
+      + '</div>';
+  }).join('');
+
+  if (state.vesperThinking) {
+    msgs += '<div style="display:flex;gap:8px;align-items:flex-start">'
+      + '<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.75rem;background:linear-gradient(135deg,#7c3aed,#ec4899)">✦</div>'
+      + '<div style="padding:9px 12px;border-radius:12px;font-size:0.81rem;background:rgba(124,58,237,0.15);color:#a78bfa">thinking…</div>'
+      + '</div>';
+  }
+
+  var panel = '<div style="position:fixed;bottom:80px;right:24px;width:340px;max-height:520px;'
+    + 'background:#0f0a1e;border:1px solid rgba(124,58,237,0.4);border-radius:16px;'
+    + 'display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,0.8);z-index:200">'
     // Header
-    +'<div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,rgba(124,58,237,0.28),rgba(236,72,153,0.18));border-radius:16px 16px 0 0">'
-    +'<div style="display:flex;align-items:center;gap:9px">'
-    +'<div style="width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899);display:flex;align-items:center;justify-content:center;font-size:0.9rem;font-weight:800">V</div>'
-    +'<div><div style="font-size:0.88rem;font-weight:700;color:white">Vesper</div>'
-    +'<div style="font-size:0.7rem;color:#a78bfa">'+(context==='world'?'World consultant':'Character consultant')+'</div></div></div>'
-    +'<button id="btn-vesper-toggle" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3rem;line-height:1;padding:4px 8px" title="Close">×</button>'
-    +'</div>'
-    // Quick chips for char context
-    +(context==='char'?'<div style="display:flex;flex-wrap:wrap;gap:5px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06)">'
-      +['Does my armor fit?','Suggest an ability','Is this too powerful?','Unique weapon idea'].map(function(q){
-        return '<button class="vesper-chip" data-q="'+q+'" style="padding:4px 9px;border-radius:16px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;font-size:0.7rem;cursor:pointer">'+q+'</button>';
-      }).join('')+'</div>':'')
-    // World quick chips
-    +(context==='world'?'<div style="display:flex;flex-wrap:wrap;gap:5px;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,0.06)">'
-      +['Does my lore make sense?','Suggest a faction','Check for contradictions','Add a landmark'].map(function(q){
-        return '<button class="vesper-chip" data-q="'+q+'" style="padding:4px 9px;border-radius:16px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;font-size:0.7rem;cursor:pointer">'+q+'</button>';
-      }).join('')+'</div>':'')
+    + '<div style="padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,rgba(124,58,237,0.25),rgba(236,72,153,0.15));border-radius:16px 16px 0 0;flex-shrink:0">'
+    + '<div style="display:flex;align-items:center;gap:8px">'
+    + '<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#ec4899);display:flex;align-items:center;justify-content:center;font-size:0.85rem">✦</div>'
+    + '<div><div style="font-size:0.86rem;font-weight:700;color:white">Vesper</div>'
+    + '<div style="font-size:0.65rem;color:#a78bfa">'+(context==='world'?'watching your world':'watching your character')+'</div>'
+    + '</div></div>'
+    + '<button id="btn-vesper-toggle" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:1.2rem;padding:2px 6px">×</button>'
+    + '</div>'
+    // Context strip
+    + contextSnap
+    // Chips
+    + chipsHtml
     // Messages
-    +'<div id="vesper-msgs" style="flex:1;overflow-y:auto;padding:14px;min-height:100px;max-height:240px">'
-    +(msgs||'<div style="color:#6b7280;font-size:0.8rem;text-align:center;padding:24px 12px">I know your '+(context==='world'?'world settings, lore, and rules':'world and character details')+'.<br>Ask me anything.</div>')
-    +(state.vesperThinking?'<div style="display:flex;gap:8px;align-items:flex-start"><div style="width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:linear-gradient(135deg,#7c3aed,#ec4899)">V</div><div style="padding:10px 12px;border-radius:12px;font-size:0.82rem;background:rgba(124,58,237,0.18);color:#a78bfa">thinking...</div></div>':'')
-    +'</div>'
-    // Input row
-    +'<div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px">'
-    +'<input id="vesper-input" type="text" placeholder="'+placeholder+'" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:9px 12px;color:white;font-size:0.8rem;outline:none" />'
-    +'<button id="btn-vesper-send" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:9px 16px;border-radius:10px;font-size:0.82rem;font-weight:700;cursor:pointer">Send</button>'
-    +'</div>'
-    +'</div>';
+    + '<div id="vesper-msgs" style="flex:1;overflow-y:auto;padding:12px;min-height:80px;max-height:220px">'
+    + (msgs || '<div style="color:#4b5563;font-size:0.78rem;text-align:center;padding:20px 8px">I can see what you\'re building.<br>Ask me anything — or I\'ll speak up if I notice something.</div>')
+    + (state.vesperThinking ? '' : '')
+    + '</div>'
+    // Input
+    + '<div style="padding:9px 12px;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:8px;flex-shrink:0">'
+    + '<input id="vesper-input" type="text" placeholder="ask or just type…" style="flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:8px 11px;color:white;font-size:0.79rem;outline:none" />'
+    + '<button id="btn-vesper-send" style="background:linear-gradient(135deg,#7c3aed,#ec4899);border:none;color:white;padding:8px 14px;border-radius:10px;font-size:0.82rem;font-weight:700;cursor:pointer">→</button>'
+    + '</div>'
+    + '</div>';
 
   return panel + toggleBtn;
 }
 
+// ── Vesper proactive nudge — called after each step advance ─────────────────
+async function vesperNudge(context) {
+  if (!state.apiKey) return;
+  var w = state.draftWorld || {}, c = state.draftChar || {};
+  var step = context === 'world' ? (state.worldStep||0) : (state.charStep||0);
+
+  var WORLD_STEP_NAMES = ['Name','Nature & Climate','Society & Power','Lore & Landmarks','Culture & Faith','Economy & History','Tone & Secrets','Laws of the World','Power System','World Contract','Finalize'];
+  var CHAR_STEP_NAMES = ['Class','Race','Origin','Backstory','Stats','Abilities','Flaws','Alignment','Opening Scene'];
+
+  var worldCtx = 'World: name="'+(w.name||'')+'" setting="'+(w.setting||'')+'" magic="'+(w.magic_level||'')+'" tech="'+(w.technology_level||'')+'" danger="'+(w.danger_level||'')+'" climate="'+(w.climate||'')+'" lore="'+(w.lore||'')+'" factions="'+(w.factions||'')+'" tone="'+(w.tone||'')+'" magic_law="'+(w.magic_law||'')+'" death_law="'+(w.death_law||'')+'"';
+  var charCtx = 'Character: name="'+(c.name||'')+'" class="'+(c.class||'')+'" race="'+(c.race||'')+'" origin="'+(c.origin||'')+'" backstory="'+(c.backstory||'')+'" flaw="'+(c.flaw||'')+'"';
+
+  var sys = 'You are Vesper — a sharp, warm creative collaborator watching someone build a world/character in a god-game called Aurora. You are standing next to them at the drafting table. You react to what they\'ve just done or filled in. Be specific — reference their actual choices. Be brief — 1-3 sentences max. Occasionally offer to write a specific field for them using [FILL:fieldname:value] tags in your reply (e.g. if they chose a fire-and-ash setting and left lore blank, offer to write lore for them). Only offer fills that are blank or thin. Be a collaborator not a validator — get excited about interesting choices, flag conflicts, ask one sharp question if something is ambiguous. NEVER be generic.';
+
+  var prompt = (context === 'world' ? worldCtx : worldCtx + '\n' + charCtx)
+    + '\n\nThey just finished step "' + (context === 'world' ? WORLD_STEP_NAMES[step] : CHAR_STEP_NAMES[step]) + '". React to what they filled in. If something is blank or thin, offer to write it with a [FILL:fieldname:suggested value] tag.';
+
+  try {
+    var reply = await callAI(sys, prompt, 220);
+    // Parse any FILL tags into action buttons
+    var actions = [];
+    var displayReply = reply.replace(/\[FILL:([^:]+):([^\]]+)\]/g, function(_, field, value) {
+      actions.push({ action: 'fill', field: field.trim(), value: value.trim(), label: '✦ Write ' + field.trim() });
+      return '';
+    }).trim();
+    if (displayReply) {
+      state.vesperMessages.push({ role: 'assistant', content: displayReply, actions: actions.length ? actions : undefined });
+      state.vesperNudge = true;
+    }
+  } catch(e) { /* silent fail */ }
+  render(); setTimeout(scrollVesper, 50);
+}
+
+async function askVesper(question, context) {
+  var w = state.draftWorld || {}, c = state.draftChar || {};
+  var worldCtx = 'World being created — name: "'+(w.name||'unnamed')+'", setting: "'+(w.setting||'?')+'", climate: "'+(w.climate||'?')+'", magic: "'+(w.magic_level||'?')+'", tech: "'+(w.technology_level||'?')+'", danger: "'+(w.danger_level||'?')+'", lore: "'+(w.lore||'')+'", factions: "'+(w.factions||'')+'", landmarks: "'+(w.landmarks||'')+'", laws: magic="'+(w.magic_law||'')+'" death="'+(w.death_law||'')+'" reality="'+(w.reality_law||'')+'"';
+  var charCtx = 'Character — name: "'+(c.name||'unnamed')+'", class: "'+(c.class||'?')+'", race: "'+(c.race||'?')+'", origin: "'+(c.origin||'?')+'", backstory: "'+(c.backstory||'')+'", flaw: "'+(c.flaw||'?')+'", alignment: "'+(c.alignment||'?')+'"';
+
+  var ctx = context === 'world' ? worldCtx : worldCtx + '\n' + charCtx;
+
+  var sys = 'You are Vesper — a creative collaborator in a god-game called Aurora. You are standing next to the player at the drafting table watching them build. You know everything they have filled in. Be direct, specific, warm. Max 3 sentences unless listing ideas. If asked to write something (lore, faction name, backstory, etc.) just write it — good, usable prose they can paste in. If you spot a conflict or inconsistency, name it specifically. Never be generic.';
+
+  // Check if the question is asking Vesper to write/fill something
+  var isFillRequest = /write|fill|suggest|generate|give me|create|make/i.test(question);
+
+  try {
+    var reply = await callAI(sys, ctx + '\n\nPlayer asks: ' + question + (isFillRequest ? '\n\nRespond with usable content they can copy directly. End with [FILL:fieldname:content] if you want to offer a one-click fill.' : ''), 350);
+    // Parse FILL tags
+    var actions = [];
+    var displayReply = reply.replace(/\[FILL:([^:]+):([^\]]+)\]/g, function(_, field, value) {
+      actions.push({ action: 'fill', field: field.trim(), value: value.trim(), label: '✦ Apply to ' + field.trim() });
+      return '';
+    }).trim();
+    state.vesperMessages.push({ role: 'assistant', content: displayReply, actions: actions.length ? actions : undefined });
+  } catch(e) {
+    state.vesperMessages.push({ role: 'assistant', content: 'Something went wrong. Check your API key.' });
+  }
+  state.vesperThinking = false;
+  state.vesperNudge = false;
+  render(); setTimeout(scrollVesper, 50);
+}
+
 function attachVesperEvents(context) {
-  // Toggle button (open/close)
   document.querySelectorAll('#btn-vesper-toggle').forEach(function(toggle) {
     toggle.addEventListener('click', function() {
       state.vesperOpen = !state.vesperOpen;
+      state.vesperNudge = false;
       render(); setTimeout(scrollVesper, 50);
     });
   });
-  // Send button & input
   var sendBtn = document.getElementById('btn-vesper-send');
   var inp = document.getElementById('vesper-input');
   if (sendBtn && inp) {
     var doSend = function() {
       var q = inp.value.trim(); if (!q) return;
-      state.vesperMessages.push({ role:'user', content: q });
+      state.vesperMessages.push({ role: 'user', content: q });
       inp.value = '';
       state.vesperThinking = true; render(); scrollVesper();
       askVesper(q, context);
@@ -1865,16 +2438,47 @@ function attachVesperEvents(context) {
     sendBtn.addEventListener('click', doSend);
     inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSend(); });
   }
-  // Quick-prompt chips
+  // Quick chips
   document.querySelectorAll('.vesper-chip').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var q = btn.dataset.q;
-      state.vesperMessages.push({ role:'user', content: q });
+      state.vesperMessages.push({ role: 'user', content: q });
       state.vesperThinking = true; render(); setTimeout(scrollVesper, 50);
       askVesper(q, context);
     });
   });
+  // Action buttons (fill fields)
+  document.querySelectorAll('.vesper-action-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var action = btn.dataset.action;
+      var field = btn.dataset.field;
+      var value = btn.dataset.value;
+      if (action === 'fill' && field && value) {
+        vesperApplyFill(field, value, context);
+        btn.textContent = '✓ Applied';
+        btn.style.background = 'rgba(74,222,128,0.2)';
+        btn.style.borderColor = 'rgba(74,222,128,0.6)';
+        btn.disabled = true;
+      }
+    });
+  });
 }
+
+// Apply a fill from Vesper directly to the draft world/char
+function vesperApplyFill(field, value, context) {
+  var WORLD_FIELDS = ['name','setting','climate','magic_level','technology_level','danger_level','lore','factions','landmarks','rules_of_nature','tone','magic_law','death_law','reality_law','description'];
+  var CHAR_FIELDS = ['name','backstory','abilities','alignment','lore'];
+  if (context === 'world' && WORLD_FIELDS.indexOf(field) > -1) {
+    state.draftWorld[field] = value;
+  } else if (context === 'char' && CHAR_FIELDS.indexOf(field) > -1) {
+    state.draftChar[field] = value;
+  }
+  // Also update any visible input
+  var el = document.getElementById('world-'+field) || document.getElementById('char-'+field);
+  if (el) { el.value = value; el.style.borderColor = 'rgba(74,222,128,0.5)'; }
+  render();
+}
+
 
 function scrollVesper() {
   var el = document.getElementById('vesper-msgs');
@@ -3797,12 +4401,30 @@ function renderKeyScreen() {
     +'<p style="color:#6b7280;font-size:0.875rem;margin-bottom:32px">Your key is saved locally in your browser only.</p>'
     +'<input id="key-input" type="password" placeholder="sk-..." value="'+esc(state.apiKey)+'" style="width:100%;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:12px;padding:12px 16px;color:white;font-size:1rem;margin-bottom:16px;text-align:center;outline:none" />'
     +'<button id="key-save" style="width:100%;background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:14px;border-radius:12px;font-size:1.125rem;font-weight:700;cursor:pointer">Enter Aurora →</button>'
+    +'<div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.07);padding-top:20px;width:100%">'
+    +'<p style="color:#9ca3af;font-size:0.82rem;margin-bottom:8px;text-align:left">🔊 <strong style="color:white">Narrator Voice</strong> — ElevenLabs (optional)</p>'
+    +'<p style="color:#6b7280;font-size:0.75rem;margin-bottom:12px;text-align:left">Add an ElevenLabs API key to hear your narrator speak. Each narrator style has its own voice personality. Get a free key at <a href="https://elevenlabs.io" target="_blank" style="color:#7c3aed">elevenlabs.io</a>.</p>'
+    +'<input id="el-key-input" type="password" placeholder="ElevenLabs API key..." value="'+esc(state.elevenLabsKey)+'" style="width:100%;background:rgba(255,255,255,0.07);border:1px solid rgba(124,58,237,0.3);border-radius:10px;padding:10px 14px;color:white;font-size:0.85rem;margin-bottom:8px;outline:none;box-sizing:border-box" />'
+    +'<button id="el-key-save" style="width:100%;background:rgba(124,58,237,0.3);border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:10px;border-radius:10px;font-size:0.85rem;font-weight:600;cursor:pointer">Save Voice Key</button>'
+    +'</div>'
     +'<p style="font-size:0.75rem;color:#4b5563;margin-top:16px">Get a free key at <span style="color:#c084fc">platform.openai.com</span></p>'
     +'</div></div>';
 }
 function attachKeyEvents() {
   var btn = document.getElementById('key-save'), inp = document.getElementById('key-input');
   if (btn) btn.addEventListener('click', function() { var v=inp?inp.value.trim():''; if(v){state.apiKey=v;localStorage.setItem(KEY_STORE,v);state.keyRedirectMsg=null;state.screen='worlds';render();} });
+  // ElevenLabs key save
+  var elBtn = document.getElementById('el-key-save'), elInp = document.getElementById('el-key-input');
+  if (elBtn && elInp) {
+    elBtn.addEventListener('click', function() {
+      var v = elInp.value.trim();
+      state.elevenLabsKey = v;
+      localStorage.setItem('aurora_elevenlabs_key', v);
+      elBtn.textContent = v ? '✓ Voice Key Saved' : 'Cleared';
+      elBtn.style.background = 'rgba(74,222,128,0.2)';
+      elBtn.style.color = '#4ade80';
+    });
+  }
   if (inp) inp.addEventListener('keydown', function(e){if(e.key==='Enter')btn&&btn.click();});
 }
 
@@ -4150,7 +4772,7 @@ function renderWorlds() {
   var activeTab = state.worldsTab || 'mine';
 
   // Private worlds (player-created)
-  var myWorlds = state.worlds.filter(function(w){ return !w.world_type || w.world_type==='private'; });
+  var myWorlds = state.worlds.filter(function(w){ return !w.world_type || w.world_type==='private' || w.world_type==='known' || w.world_type==='Known'; });
   var eventWorlds = state.worlds.filter(function(w){ return w.world_type==='event'; });
   var canonWorlds = state.worlds.filter(function(w){ return w.world_type==='Canon'; });
 
@@ -4210,6 +4832,7 @@ function renderWorlds() {
     +'<div><h1 style="font-size:1.5rem;font-weight:700">🌌 Aurora Worlds</h1><p style="color:#9ca3af;font-size:0.875rem">Your realms & the shared universe.</p></div>'
     +'<div style="display:flex;gap:10px">'
     +'<button id="btn-cobuild" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(124,58,237,0.3),rgba(236,72,153,0.2));border:1px solid rgba(124,58,237,0.5);color:#c084fc;padding:8px 14px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.85rem"><span>✦</span>Build With Vesper</button>'
+    +'<button id="btn-restore-worlds" style="background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.3);color:#fbbf24;padding:8px 14px;border-radius:10px;font-size:0.8rem;font-weight:600;cursor:pointer" title="Restore worlds from last backup">♻️ Restore</button>'
     +'<button id="btn-dev-world" style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.4);color:#a78bfa;padding:8px 14px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.75rem">🛠️ Dev World</button>'
     +'<button id="btn-new-world" style="background:linear-gradient(to right,#9333ea,#ec4899);border:none;color:white;padding:8px 16px;border-radius:12px;font-weight:600;cursor:pointer;font-size:0.85rem">+ New World</button>'
     +'<button id="btn-home" style="background:rgba(255,255,255,0.1);border:none;color:white;padding:8px 16px;border-radius:12px;cursor:pointer;font-size:0.85rem">← Home</button>'
@@ -4244,6 +4867,8 @@ function attachWorldsEvents() {
   function goCreate(){state.screen='createWorld';state.worldStep=0;state.draftWorld=freshWorld();state.aiSuggestion=null;render();}
   if(n) n.addEventListener('click',goCreate);
   if(f) f.addEventListener('click',goCreate);
+  var bDevWorRestore = document.getElementById('btn-restore-worlds');
+  if(bRestore) bRestore.addEventListener('click', function(){ restoreWorldsFromBackup(); });
   var bDevWorld = document.getElementById('btn-dev-world');
   if(bDevWorld) bDevWorld.addEventListener('click', function(){
     state.draftWorld = devTesterWorld();
@@ -4489,16 +5114,20 @@ function renderCreateWorld() {
           html += '<div style="border:1px dashed rgba(255,255,255,0.1);border-radius:12px;padding:24px;text-align:center;color:#6b7280;font-size:0.85rem">No factions yet. Click <strong style=\'color:#c084fc\'>+ Add Faction</strong> to define who holds power.</div>';
         }
         factions.forEach(function(faction, fi){
-          html += '<div class="faction-card" data-fi="'+fi+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(147,51,234,0.25);border-radius:14px;padding:16px;margin-bottom:12px">'
+          html += '<div class="faction-card" data-fi="'+fi+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(147,51,234,0.25);border-radius:12px;padding:14px;margin-bottom:10px">'
             +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-            +'<input class="faction-name" data-fi="'+fi+'" value="'+esc(faction.name||'')+'" placeholder="Faction name..." style="background:none;border:none;color:white;font-size:1rem;font-weight:700;outline:none;flex:1" />'
-            +'<button class="btn-remove-faction" data-fi="'+fi+'" style="background:rgba(239,68,68,0.15);border:none;color:#f87171;padding:3px 10px;border-radius:8px;font-size:0.7rem;cursor:pointer">✕ Remove</button>'
-            +'</div>'
-            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Goal / Agenda</div><textarea class="faction-goal" data-fi="'+fi+'" rows="2" placeholder="What do they want?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none;resize:none">'+esc(faction.goal||'')+'</textarea></div>'
-            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Leader</div><input class="faction-leader" data-fi="'+fi+'" value="'+esc(faction.leader||'')+'" placeholder="Who leads them?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
-            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Territory</div><input class="faction-territory" data-fi="'+fi+'" value="'+esc(faction.territory||'')+'" placeholder="Where do they operate?" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
-            +'<div><div style="font-size:0.65rem;color:#7c3aed;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Allies / Enemies</div><input class="faction-relations" data-fi="'+fi+'" value="'+esc(faction.allies||faction.enemies||'')+'" placeholder="Friends & rivals..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">⚔️</span><input class="faction-name" data-fi="'+fi+'" value="'+esc(faction.name||'')+'" placeholder="Faction name..." style="background:none;border:none;color:#e5e7eb;font-weight:700;font-size:0.92rem;outline:none;width:170px"></div>'
+            +'<div style="display:flex;gap:6px">'
+            +'<button class="btn-ai-faction" data-fi="'+fi+'" style="background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.3);color:#c084fc;font-size:0.65rem;padding:3px 8px;border-radius:6px;cursor:pointer">✦ Fill</button>'
+            +'<button class="btn-remove-faction" data-fi="'+fi+'" style="background:rgba(239,68,68,0.12);border:none;color:#f87171;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem">✕</button>'
+            +'</div></div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Goal / Agenda</div><input class="faction-goal" data-fi="'+fi+'" value="'+esc(faction.goal||'')+'" placeholder="What do they want?" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Leader</div><input class="faction-leader" data-fi="'+fi+'" value="'+esc(faction.leader||'')+'" placeholder="Who leads them?" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Territory</div><input class="faction-territory" data-fi="'+fi+'" value="'+esc(faction.territory||'')+'" placeholder="Where they operate" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Allies</div><input class="faction-allies" data-fi="'+fi+'" value="'+esc(faction.allies||'')+'" placeholder="Who they work with" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Enemies</div><input class="faction-enemies" data-fi="'+fi+'" value="'+esc(faction.enemies||'')+'" placeholder="Who opposes them?" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#9333ea;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Hidden Agenda (narrator only)</div><input class="faction-secret" data-fi="'+fi+'" value="'+esc(faction.secret||'')+'" placeholder="What are they hiding?" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
             +'</div></div>';
         });
         html += '</div>';
@@ -4515,17 +5144,23 @@ function renderCreateWorld() {
           html += '<div style="border:1px dashed rgba(255,255,255,0.1);border-radius:12px;padding:24px;text-align:center;color:#6b7280;font-size:0.85rem">No races yet. Click <strong style=\'color:#6ee7b7\'>+ Add Race</strong> to define who inhabits your world.</div>';
         }
         races.forEach(function(race, ri){
-          html += '<div class="race-card" data-ri="'+ri+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(16,185,129,0.2);border-radius:14px;padding:16px;margin-bottom:12px">'
+          html += '<div class="race-card" data-ri="'+ri+'" style="background:rgba(255,255,255,0.04);border:1px solid rgba(16,185,129,0.25);border-radius:12px;padding:14px;margin-bottom:10px">'
             +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-            +'<input class="race-name" data-ri="'+ri+'" value="'+esc(race.name||'')+'" placeholder="Race name..." style="background:none;border:none;color:white;font-size:1rem;font-weight:700;outline:none;flex:1" />'
-            +'<label style="display:flex;align-items:center;gap:6px;font-size:0.72rem;color:#9ca3af;cursor:pointer;margin-right:10px"><input type="checkbox" class="race-playable" data-ri="'+ri+'" '+(race.playable?'checked':'')+' style="accent-color:#6ee7b7" /> Playable</label>'
-            +'<button class="btn-remove-race" data-ri="'+ri+'" style="background:rgba(239,68,68,0.15);border:none;color:#f87171;padding:3px 10px;border-radius:8px;font-size:0.7rem;cursor:pointer">✕</button>'
-            +'</div>'
-            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-            +'<div style="grid-column:1/-1"><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Description</div><textarea class="race-desc" data-ri="'+ri+'" rows="2" placeholder="Appearance, bearing, how they move..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none;resize:none">'+esc(race.description||'')+'</textarea></div>'
-            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Traits & Abilities</div><input class="race-traits" data-ri="'+ri+'" value="'+esc(race.traits||'')+'" placeholder="Night vision, resilience..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
-            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Culture</div><input class="race-culture" data-ri="'+ri+'" value="'+esc(race.culture||'')+'" placeholder="Values, traditions, lifestyle..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
-            +'<div><div style="font-size:0.65rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Lifespan</div><input class="race-lifespan" data-ri="'+ri+'" value="'+esc(race.lifespan||'')+'" placeholder="e.g. 80 years, immortal..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px;color:#e5e7eb;font-size:0.8rem;outline:none" /></div>'
+            +'<div style="display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">🌿</span><input class="race-name" data-ri="'+ri+'" value="'+esc(race.name||'')+'" placeholder="Race name..." style="background:none;border:none;color:#e5e7eb;font-weight:700;font-size:0.92rem;outline:none;width:155px"></div>'
+            +'<div style="display:flex;align-items:center;gap:6px">'
+            +'<label style="display:flex;align-items:center;gap:4px;font-size:0.68rem;cursor:pointer"><input type="checkbox" class="race-playable" data-ri="'+ri+'" '+(race.playable!==false?'checked':'')+' style="cursor:pointer"><span style="color:'+(race.playable!==false?'#4ade80':'#6b7280')+'">'+(race.playable!==false?'Playable':'Hidden')+'</span></label>'
+            +'<button class="btn-ai-race" data-ri="'+ri+'" style="background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#4ade80;font-size:0.65rem;padding:3px 8px;border-radius:6px;cursor:pointer">✦ Fill</button>'
+            +'<button class="btn-remove-race" data-ri="'+ri+'" style="background:rgba(239,68,68,0.12);border:none;color:#f87171;padding:3px 8px;border-radius:6px;cursor:pointer;font-size:0.75rem">✕</button>'
+            +'</div></div>'
+            +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Description & Appearance</div><textarea class="race-description" data-ri="'+ri+'" rows="2" placeholder="What do they look like? What makes them distinct?" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem;resize:none">'+esc(race.description||'')+'</textarea></div>'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Natural Traits & Abilities</div><input class="race-traits" data-ri="'+ri+'" value="'+esc(race.traits||'')+'" placeholder="Innate powers, senses, resistances..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Culture & Values</div><input class="race-culture" data-ri="'+ri+'" value="'+esc(race.culture||'')+'" placeholder="Customs, taboos, honor codes..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Lifespan</div><input class="race-lifespan" data-ri="'+ri+'" value="'+esc(race.lifespan||'')+'" placeholder="e.g. 80yrs / Immortal / 400+" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
+            +'<div><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Stat Affinity</div><select class="race-stat-bonus" data-ri="'+ri+'" style="width:100%;background:rgba(10,5,30,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"><option value="">No bonus</option>'
+            +['STR','DEX','CON','INT','WIS','CHA','SMY'].map(function(s){return '<option value="'+s+'"'+(race.stat_bonus===s?' selected':'')+'>+10 '+s+'</option>';}).join('')
+            +'</select></div>'
+            +'<div style="grid-column:1/-1"><div style="font-size:0.62rem;color:#059669;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:3px">Relations with Other Races/Factions</div><input class="race-relations" data-ri="'+ri+'" value="'+esc(race.relations||'')+'" placeholder="Allied with / hostile to / feared by..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:5px 8px;color:#e5e7eb;font-size:0.78rem"></div>'
             +'</div></div>';
         });
         html += '</div>';
@@ -4636,6 +5271,15 @@ function renderCreateWorld() {
       +'<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:0.875rem;color:#9ca3af;font-weight:500">✦ Reality Law <span style="color:#6b7280;font-size:0.75rem">— gods, fate, prophecy, forbidden concepts</span></label>'+aiAssistBtn('reality_law','Generate')+'</div>'
       +'<textarea id="world-reality-law" rows="2" placeholder="Are gods real and active? Are there system screens? Do prophecies force events? Can fate be changed? Does the world punish rule-breaking?..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:11px 14px;color:white;font-size:0.82rem;outline:none;resize:vertical">'+esc(w.reality_law||'')+'</textarea>'
       +(state.aiSuggestionField==='reality_law'?suggestionBox():'')+'</div>';
+    // Calendar fields
+    content += '<div style="margin-top:20px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+      +'<label style="font-size:0.875rem;color:white;font-weight:600">🗓️ World Calendar <span style="font-size:0.72rem;color:#6b7280;font-weight:400">(optional)</span></label>'
+      +'<button id="btn-gen-calendar" style="font-size:0.7rem;padding:4px 10px;border-radius:8px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.1);color:#c084fc;cursor:pointer">✦ Generate</button>'
+      +'</div>'
+      +'<input id="world-calendar-name" type="text" placeholder="e.g. The Ashen Calendar, The Age of Moons..." value="'+esc(w.calendar_name||'')+'" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;color:white;font-size:0.82rem;outline:none;margin-bottom:8px" />'
+      +'<input id="world-calendar-months" type="text" placeholder="Month names comma separated e.g. Ashfall, Duskmoon, Ironrise..." value="'+esc(w.calendar_months||'')+'" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;color:white;font-size:0.82rem;outline:none" />'
+      +'</div>';
   } else if(step===8){
     // ── POWER SYSTEM BUILDER ──────────────────────────────────────
     var PSYS = [
@@ -4758,7 +5402,7 @@ function attachCreateWorldEvents() {
     b.addEventListener('click',function(){state.draftWorld.continent_position=b.dataset.pos;collectWorldStep();render();});
   });
   if(bprev) bprev.addEventListener('click',function(){collectWorldStep();state.worldStep--;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
-  if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();});
+  if(bnext) bnext.addEventListener('click',function(){collectWorldStep();if(state.worldStep===0&&!state.draftWorld.name.trim()){alert('Please enter a world name!');return;}state.worldStep++;state.aiSuggestion=null;state.aiSuggestionField=null;state.aiTip=null;state.consistencyCheck=null;render();fetchStepTip();if(state.vesperOpen&&state.apiKey)vesperNudge('world');});
   if(bsave) bsave.addEventListener('click',function(){collectWorldStep();var w=Object.assign({},state.draftWorld,{id:Date.now().toString(),status:'Active',created_date:new Date().toISOString()});state.worlds.push(w);save();state.currentWorld=w;state.screen='worldDetail';render();});
   document.querySelectorAll('.sel-btn').forEach(function(b){b.addEventListener('click',function(){state.draftWorld[b.dataset.field]=b.dataset.val;render();});});
   document.querySelectorAll('.world-slider').forEach(function(s){s.addEventListener('input',function(){var o=s.dataset.opts.split('|');state.draftWorld[s.dataset.field]=o[parseInt(s.value)];render();});});
@@ -4800,6 +5444,15 @@ function attachCreateWorldEvents() {
     factions.splice(fi,1);state.draftWorld.factions=JSON.stringify(factions);render();
   });});
   // Add race
+  // AI fill buttons for factions
+  document.querySelectorAll('.btn-ai-faction').forEach(function(btn){
+    btn.addEventListener('click', function(){ aiFillFaction(parseInt(btn.dataset.fi)); });
+  });
+  // AI fill buttons for races
+  document.querySelectorAll('.btn-ai-race').forEach(function(btn){
+    btn.addEventListener('click', function(){ aiFillRace(parseInt(btn.dataset.ri)); });
+  });
+
   var bar=document.getElementById('btn-add-race');
   if(bar) bar.addEventListener('click',function(){
     collectWorldStep();
@@ -4930,6 +5583,37 @@ function attachCreateWorldEvents() {
     });
   }
 
+  // ── Calendar Generate button ─────────────────────────────────────────────
+  var btnGenCal = document.getElementById('btn-gen-calendar');
+  if (btnGenCal) {
+    btnGenCal.addEventListener('click', async function() {
+      btnGenCal.textContent = '…generating';
+      btnGenCal.disabled = true;
+      var w = state.draftWorld;
+      var prompt = 'Create a unique world calendar for a fantasy/sci-fi world with these traits: setting="'+(w.setting||'unknown')+'", climate="'+(w.climate||'unknown')+'", magic="'+(w.magic_level||'unknown')+'". Return JSON only: {"calendar_name":"...","months":["Month1","Month2","Month3","Month4","Month5","Month6","Month7","Month8"]}. Make names evocative and world-appropriate.';
+      try {
+        var result = await callAI('You are a world-building AI. Return only valid JSON, no commentary.', prompt, 200);
+        var clean = result.replace(/```json|```/g,'').trim();
+        var cal = JSON.parse(clean);
+        state.draftWorld.calendar_name = cal.calendar_name || '';
+        state.draftWorld.calendar_months = (cal.months||[]).join(', ');
+        var cn = document.getElementById('world-calendar-name');
+        var cm = document.getElementById('world-calendar-months');
+        if (cn) { cn.value = state.draftWorld.calendar_name; cn.style.borderColor='rgba(74,222,128,0.5)'; }
+        if (cm) { cm.value = state.draftWorld.calendar_months; cm.style.borderColor='rgba(74,222,128,0.5)'; }
+      } catch(e) {
+        state.draftWorld.calendar_name = 'The Ancient Calendar';
+        state.draftWorld.calendar_months = 'Ashfall, Frostbreak, Bloomrise, Sunswell, Heatpeak, Stormtide, Harvestmoon, Winterveil';
+        var cn2 = document.getElementById('world-calendar-name');
+        var cm2 = document.getElementById('world-calendar-months');
+        if (cn2) cn2.value = state.draftWorld.calendar_name;
+        if (cm2) cm2.value = state.draftWorld.calendar_months;
+      }
+      btnGenCal.textContent = '✓ Generated';
+      btnGenCal.disabled = false;
+    });
+  }
+
   attachVesperEvents('world');
   var ba=document.getElementById('btn-apply-suggest'),bd=document.getElementById('btn-dismiss-suggest');
   if(ba) ba.addEventListener('click',applyAiSuggestion);
@@ -4946,8 +5630,9 @@ function collectWorldStep() {
     factionCards.forEach(function(card){
       var nm=card.querySelector('.faction-name'),gl=card.querySelector('.faction-goal'),
           ld=card.querySelector('.faction-leader'),tr=card.querySelector('.faction-territory'),
-          rl=card.querySelector('.faction-relations');
-      fArr.push({name:nm?nm.value:'',goal:gl?gl.value:'',leader:ld?ld.value:'',territory:tr?tr.value:'',allies:rl?rl.value:'',enemies:''});
+          al=card.querySelector('.faction-allies'),en=card.querySelector('.faction-enemies'),
+          sc=card.querySelector('.faction-secret');
+      fArr.push({name:nm?nm.value:'',goal:gl?gl.value:'',leader:ld?ld.value:'',territory:tr?tr.value:'',allies:al?al.value:'',enemies:en?en.value:'',secret:sc?sc.value:''});
     });
     state.draftWorld.factions=JSON.stringify(fArr);
   } else { var f=document.getElementById('world-factions');if(f)state.draftWorld.factions=f.value; }
@@ -4956,10 +5641,11 @@ function collectWorldStep() {
   if(raceCards.length>0){
     var rArr=[];
     raceCards.forEach(function(card){
-      var nm=card.querySelector('.race-name'),ds=card.querySelector('.race-desc'),
+      var nm=card.querySelector('.race-name'),ds=card.querySelector('.race-description'),
           tr=card.querySelector('.race-traits'),cu=card.querySelector('.race-culture'),
-          li=card.querySelector('.race-lifespan'),pl=card.querySelector('.race-playable');
-      rArr.push({name:nm?nm.value:'',description:ds?ds.value:'',traits:tr?tr.value:'',culture:cu?cu.value:'',lifespan:li?li.value:'',playable:pl?pl.checked:false});
+          li=card.querySelector('.race-lifespan'),pl=card.querySelector('.race-playable'),
+          sb=card.querySelector('.race-stat-bonus'),rl=card.querySelector('.race-relations');
+      rArr.push({name:nm?nm.value:'',description:ds?ds.value:'',traits:tr?tr.value:'',culture:cu?cu.value:'',lifespan:li?li.value:'',playable:pl?pl.checked:true,stat_bonus:sb?sb.value:'',relations:rl?rl.value:''});
     });
     state.draftWorld.races=JSON.stringify(rArr);
   }
@@ -4976,6 +5662,8 @@ function collectWorldStep() {
   var ml=document.getElementById('world-magic-law');if(ml)state.draftWorld.magic_law=ml.value;
   var dl=document.getElementById('world-death-law');if(dl)state.draftWorld.death_law=dl.value;
   var rl=document.getElementById('world-reality-law');if(rl)state.draftWorld.reality_law=rl.value;
+  var cn=document.getElementById('world-calendar-name');if(cn)state.draftWorld.calendar_name=cn.value;
+  var cm=document.getElementById('world-calendar-months');if(cm)state.draftWorld.calendar_months=cm.value;
   var pl=document.getElementById('world-power-law');if(pl)state.draftWorld.power_law=pl.value;
   var rn=document.getElementById('world-rank-names');if(rn)state.draftWorld.rank_names=rn.value;
   var gc=document.getElementById('world-genre-custom');if(gc&&gc.value.trim())state.draftWorld.genre_tone=gc.value.trim();
@@ -5256,7 +5944,7 @@ function attachCreateCharEvents() {
   var bb=document.getElementById('btn-back-char'),bp=document.getElementById('btn-char-prev'),bn=document.getElementById('btn-char-next'),bs=document.getElementById('btn-save-char');
   if(bb) bb.addEventListener('click',function(){state.screen='worldDetail';render();});
   if(bp) bp.addEventListener('click',function(){collectCharStep();state.charStep--;render();});
-  if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();});
+  if(bn) bn.addEventListener('click',function(){collectCharStep();if(state.charStep===0&&!state.draftChar.name.trim()){alert('Enter a character name!');return;}state.charStep++;render();if(state.vesperOpen&&state.apiKey)vesperNudge('char');});
   if(bs) bs.addEventListener('click',function(){collectCharStep();applyMasteryForLevel(state.draftChar);var ch=Object.assign({},state.draftChar,{id:Date.now().toString()});state.characters.push(ch);save();state.currentChar=ch;state.screen='play';startGame();});
   document.querySelectorAll('.preset-btn').forEach(function(b){b.addEventListener('click',function(){var cls=b.dataset.cls,p=CLASS_PRESETS[cls];state.draftChar.class=cls;if(p){var st={};['STR','DEX','CON','INT','WIS','CHA'].forEach(function(s){st[s]=p[s]||50;});state.draftChar.stats=st;}render();});});
   document.querySelectorAll('.scenario-example-btn').forEach(function(b){b.addEventListener('click',function(){var sc=document.getElementById('char-scenario');if(sc){sc.value=b.dataset.ex;state.draftChar.starting_scenario=b.dataset.ex;}});});
@@ -5283,6 +5971,12 @@ function attachCreateCharEvents() {
     btn.addEventListener('click',function(){
       state.draftChar.race = btn.dataset.race;
       state.draftChar.race_traits = btn.dataset.traits || '';
+      // Apply race stat bonus
+      var raceStat = btn.dataset.statBonus;
+      if (raceStat && state.draftChar.stats) {
+        // Remove any previous race bonuses by resetting, then apply new one
+        state.draftChar.race_stat_bonus = raceStat;
+      }
       render();
     });
   });
@@ -5620,6 +6314,21 @@ function renderCodex() {
       })()
     },
     {
+      key:'races', title:'Races of the World', icon:'🌿', color:'#34d399',
+      entries: (function(){
+        var races = [];
+        try { races = JSON.parse(w.races||'[]'); } catch(e){ if(w.races) races=[{name:w.races}]; }
+        return races.map(function(r){
+          return {
+            title: r.name + (r.playable===false?' [NPC only]':' [Playable]'),
+            text: [r.description, r.traits ? 'Traits: '+r.traits : '', r.lifespan ? 'Lifespan: '+r.lifespan : '', r.culture ? 'Culture: '+r.culture : ''].filter(Boolean).join(' | '),
+            known: true,
+            tag: r.stat_bonus ? '+10 '+r.stat_bonus : null
+          };
+        });
+      })()
+    },
+    {
       key:'npcs', title:'Known Individuals', icon:'👤', color:'#60a5fa',
       entries: (state.npcs||[]).map(function(n){
         return {title:n.name, text:(n.notes||'')+(n.goals?' | Goal: '+n.goals:''), known:true, tag:n.attitude, tagColor:n.attitude==='friendly'?'#4ade80':n.attitude==='hostile'?'#f87171':'#fbbf24'};
@@ -5802,28 +6511,70 @@ function renderPlay() {
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">Class</div><div style="color:#c084fc;font-weight:700">'+esc(c.class)+'</div></div>'
     +'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px"><div style="color:#9ca3af">NPCs</div><div style="color:#4ade80;font-weight:700">'+state.npcs.length+'</div></div>'
     +'</div>'
-    // ── Narrator Style + POV mini-selector ───────────────────────────────────
-    +'<div style="margin-top:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:8px 10px">'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-    +'<span style="font-size:0.65rem;color:#6b7280;font-weight:600;letter-spacing:0.05em">NARRATOR</span>'
-    +'<div style="display:flex;gap:4px">'
-    +['chronicler','gamemaster','wildcard','grimdark','companion'].map(function(s){
-        var labels={chronicler:'📜',gamemaster:'🎲',wildcard:'🎭',grimdark:'💀',companion:'🌟'};
-        var active = (state.narratorStyle||'gamemaster')===s;
-        return '<button class="btn-narrator-style" data-style="'+s+'" title="'+s[0].toUpperCase()+s.slice(1)+'" style="background:'+(active?'rgba(147,51,234,0.4)':'rgba(255,255,255,0.07)')+';border:'+(active?'1px solid rgba(147,51,234,0.6)':'1px solid transparent')+';color:white;padding:3px 7px;border-radius:6px;cursor:pointer;font-size:0.85rem">'+labels[s]+'</button>';
-      }).join('')
-    +'</div></div>'
-    +'<div style="display:flex;align-items:center;justify-content:space-between">'
-    +'<span style="font-size:0.65rem;color:#6b7280;font-weight:600;letter-spacing:0.05em">POV</span>'
-    +'<div style="display:flex;gap:4px">'
-    +['first','second','third'].map(function(p){
-        var labels={first:'1st',second:'2nd',third:'3rd'};
-        var active = ((state.currentChar&&state.currentChar.pov)||'second')===p;
-        return '<button class="btn-pov-style" data-pov="'+p+'" style="background:'+(active?'rgba(96,165,250,0.3)':'rgba(255,255,255,0.07)')+';border:'+(active?'1px solid rgba(96,165,250,0.5)':'1px solid transparent')+';color:'+(active?'#93c5fd':'#9ca3af')+';padding:3px 9px;border-radius:6px;cursor:pointer;font-size:0.72rem;font-weight:600">'+labels[p]+'</button>';
-      }).join('')
-    +'</div></div>'
-    +'</div>'
+    // ── Narrator Style + POV + Survival mini-selector ─────────────────────────
+    +(function(){
+      var ns = NARRATOR_STYLES[state.narratorStyle||'gamemaster'] || NARRATOR_STYLES.gamemaster;
+      var sm = SURVIVAL_MODES[state.survivalMode||'standard'] || SURVIVAL_MODES.standard;
+      var pov = (state.currentChar&&state.currentChar.pov)||'second';
+      return '<div style="margin-top:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:9px 10px">'
+        // Narrator row
+        + '<div style="margin-bottom:8px">'
+        + '<div style="font-size:0.62rem;color:#6b7280;font-weight:700;letter-spacing:0.06em;margin-bottom:5px">NARRATOR STYLE</div>'
+        + '<div style="display:flex;gap:3px;flex-wrap:wrap">'
+        + Object.values(NARRATOR_STYLES).map(function(s){
+            var active = (state.narratorStyle||'gamemaster')===s.id;
+            return '<button class="btn-narrator-style" data-style="'+s.id+'" title="'+s.desc+'" style="display:flex;align-items:center;gap:3px;padding:4px 8px;border-radius:7px;border:1px solid '+(active?'rgba(147,51,234,0.6)':'rgba(255,255,255,0.07)')+';background:'+(active?'rgba(147,51,234,0.25)':'rgba(255,255,255,0.03)')+';color:'+(active?'white':'#6b7280')+';cursor:pointer;font-size:0.72rem;font-weight:'+(active?'700':'400')+'">'
+              + s.icon + (active?' '+s.label:'') + '</button>';
+          }).join('')
+        + '</div>'
+        + (ns ? '<div style="font-size:0.68rem;color:#7c3aed;margin-top:4px;font-style:italic">'+ns.label+' — '+ns.desc+'</div>' : '')
+        + '</div>'
+        // POV row
+        + '<div style="margin-bottom:8px">'
+        + '<div style="font-size:0.62rem;color:#6b7280;font-weight:700;letter-spacing:0.06em;margin-bottom:5px">POINT OF VIEW</div>'
+        + '<div style="display:flex;gap:4px">'
+        + ['first','second','third'].map(function(p){
+            var info = {first:{label:'1st Person',tip:'SMY +bonus · Tunnel vision'},second:{label:'2nd Person',tip:'Balanced default'},third:{label:'3rd Person',tip:'Dramatic irony · Wider view'}};
+            var active = pov===p;
+            return '<button class="btn-pov-style" data-pov="'+p+'" title="'+info[p].tip+'" style="padding:4px 10px;border-radius:7px;border:1px solid '+(active?'rgba(96,165,250,0.5)':'rgba(255,255,255,0.07)')+';background:'+(active?'rgba(96,165,250,0.2)':'rgba(255,255,255,0.03)')+';color:'+(active?'#93c5fd':'#6b7280')+';cursor:pointer;font-size:0.72rem;font-weight:'+(active?'700':'400')+'">'
+              + {first:'1st',second:'2nd',third:'3rd'}[p] + '</button>';
+          }).join('')
+        + '</div></div>'
+        // Survival row
+        + '<div>'
+        + '<div style="font-size:0.62rem;color:#6b7280;font-weight:700;letter-spacing:0.06em;margin-bottom:5px">SURVIVAL MODE</div>'
+        + '<div style="display:flex;gap:3px;flex-wrap:wrap">'
+        + Object.values(SURVIVAL_MODES).map(function(s){
+            var active = (state.survivalMode||'standard')===s.id;
+            return '<button class="btn-survival-mode" data-mode="'+s.id+'" title="'+s.desc+'" style="display:flex;align-items:center;gap:3px;padding:4px 8px;border-radius:7px;border:1px solid '+(active?'rgba(239,68,68,0.5)':'rgba(255,255,255,0.07)')+';background:'+(active?'rgba(239,68,68,0.15)':'rgba(255,255,255,0.03)')+';color:'+(active?'#fca5a5':'#6b7280')+';cursor:pointer;font-size:0.72rem;font-weight:'+(active?'700':'400')+'">'
+              + s.icon + (active?' '+s.label:'') + '</button>';
+          }).join('')
+        + '</div>'
+        + (sm ? '<div style="font-size:0.68rem;color:#ef4444;margin-top:4px;font-style:italic">'+sm.label+' — '+sm.desc+'</div>' : '')
+        + '</div>'
+        + '</div>';
+    })()
     +hpBar(state.charHP,100,c.name+"'s Health")
+    // ── Time display ─────────────────────────────────────────────────────────
+    +(state.worldTime?'<div style="margin-top:8px;font-size:0.7rem;color:#6b7280;display:flex;align-items:center;gap:6px">'
+      +'<span>🕐</span>'
+      +'<span style="color:#9ca3af">Day '+state.worldTime.day+' · '+String(state.worldTime.hour).padStart(2,'0')+':00</span>'
+      +(state.worldTime.hour>=20||state.worldTime.hour<6?'<span style="color:#6366f1">Night</span>':state.worldTime.hour>=6&&state.worldTime.hour<12?'<span style="color:#fbbf24">Morning</span>':state.worldTime.hour>=12&&state.worldTime.hour<18?'<span style="color:#f59e0b">Afternoon</span>':'<span style="color:#f97316">Evening</span>')
+      +'</div>':'')
+    // ── Survival bars ────────────────────────────────────────────────────────
+    +((state.survivalMode==='survival'||state.survivalMode==='ironman')&&state.survivalStats
+      ? '<div style="margin-top:10px">'
+        +'<div style="font-size:0.62rem;color:#6b7280;font-weight:700;letter-spacing:0.06em;margin-bottom:5px">SURVIVAL</div>'
+        +[['hunger','🍖','#fb923c'],['thirst','💧','#60a5fa'],['shelter','🏕️','#4ade80']].map(function(n){
+            var val = state.survivalStats[n[0]]||0;
+            var color = val<20?'#ef4444':val<50?'#fbbf24':n[2];
+            return '<div style="margin-bottom:4px">'
+              +'<div style="display:flex;justify-content:space-between;font-size:0.65rem;color:#6b7280;margin-bottom:2px"><span>'+n[1]+' '+n[0].charAt(0).toUpperCase()+n[0].slice(1)+'</span><span style="color:'+color+'">'+val+'%</span></div>'
+              +'<div style="height:3px;background:rgba(255,255,255,0.07);border-radius:9999px"><div style="height:100%;width:'+val+'%;background:'+color+';border-radius:9999px;transition:width 0.5s"></div></div>'
+              +'</div>';
+          }).join('')
+        +'</div>'
+      : '')
     +(state.inCombat&&state.enemy?'<div style="margin-top:8px">'+hpBar(state.enemy.hp,state.enemy.maxHp,state.enemy.name)+'</div>':'')
     +(c.progression_mode!=='legend'?'<div style="margin-top:12px"><div style="color:#9ca3af;font-size:0.72rem;font-weight:600;letter-spacing:0.05em;margin-bottom:2px">MASTERY</div><div style="color:#6b7280;font-size:0.65rem;margin-bottom:6px">Grows through how you live — fight, farm, craft, trade, study…</div>'
     +['STR','DEX','CON','INT','WIS','CHA','SMY'].map(function(s){
@@ -5847,7 +6598,7 @@ function renderPlay() {
     +(state.showCrafting ? renderCraftingPanel() : '')
     +(state.showInventory ? renderInventoryPanel() : '')
     +(state.showShop ? renderShopPanel() : '')
-    +(state.showJournal?renderJournal():'')+(state.showCodex?renderCodex():'')
+    +(state.showJournal?renderJournal():'')+(state.showCodex?renderCodex():'')+(state.gmGuidesOpen?renderGMGuides():'')
     +'<div style="display:flex;flex-direction:column;height:100vh;background:#030712;'+mainStyle+'">'
     // Header
     +'<div style="border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.5);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">'
@@ -5863,7 +6614,10 @@ function renderPlay() {
     +'<button id="btn-toggle-journal" style="font-size:0.75rem;background:'+(state.showJournal?'rgba(147,51,234,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📖 Journal'+journalBadge+'</button>'
     +'<button id="btn-toggle-codex" style="font-size:0.75rem;background:'+(state.showCodex?'rgba(16,185,129,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 12px;border-radius:9999px;cursor:pointer">📚 Codex</button>'
     +(state.currentWorld&&state.currentWorld.world_stability!==undefined?'<span style="font-size:0.65rem;color:'+(state.currentWorld.world_stability>=80?'#4ade80':state.currentWorld.world_stability>=50?'#fbbf24':'#f87171')+'">⚖️ '+state.currentWorld.world_stability+'%</span>':'')
+    
+    +'<button id="btn-toggle-audio" title="Toggle audio narration" style="font-size:0.75rem;background:'+(state.audioEnabled?'rgba(74,222,128,0.25)':'rgba(255,255,255,0.1)')+';border:none;color:'+(state.audioEnabled?'#4ade80':'#9ca3af')+';padding:5px 10px;border-radius:9999px;cursor:pointer">'+(state.audioEnabled?'🔊 Audio':'🔇 Audio')+'</button>'
     +'<button id="btn-toggle-lore-fix" title="Correct a lore inconsistency" style="font-size:0.75rem;background:'+(state.showLoreFix?'rgba(239,68,68,0.3)':'rgba(255,255,255,0.1)')+';border:none;color:white;padding:5px 10px;border-radius:9999px;cursor:pointer">✏️ Lore'+(state.loreCorrections&&state.loreCorrections.length>0?'<span style="background:#ef4444;color:white;border-radius:9999px;padding:0 5px;font-size:0.65rem;margin-left:4px">'+state.loreCorrections.length+'</span>':'')+'</button>'
+    +'<button id="btn-open-gmguides" title="GM Guides — customize narrator behavior" style="font-size:0.75rem;background:'+(state.gmGuidesOpen?'rgba(124,58,237,0.25)':'rgba(255,255,255,0.1)')+';border:none;color:'+(state.gmGuidesOpen?'#c084fc':'#9ca3af')+';padding:5px 10px;border-radius:9999px;cursor:pointer">📋 Guides'+(state.gmGuides.filter(function(g){return g.enabled;}).length>0?'<span style="background:#7c3aed;color:white;border-radius:9999px;padding:0 5px;font-size:0.65rem;margin-left:4px">'+state.gmGuides.filter(function(g){return g.enabled;}).length+'</span>':'')+'</button>'
     +'</div></div>'
     +statsBar+combatBars
     // Lore Correction Panel
@@ -5947,8 +6701,85 @@ function attachPlayEvents() {
   if(tc) tc.addEventListener('click',function(){state.showCodex=!state.showCodex;render();scrollToBottom();});
   if(cc) cc.addEventListener('click',function(){state.showCodex=false;render();});
   if(cj) cj.addEventListener('click',function(){state.showJournal=false;render();scrollToBottom();});
+  // Audio toggle
+  var btnAudio = document.getElementById('btn-toggle-audio');
+  if (btnAudio) {
+    btnAudio.addEventListener('click', function() {
+      state.audioEnabled = !state.audioEnabled;
+      localStorage.setItem('aurora_audio_enabled', state.audioEnabled);
+      if (!state.audioEnabled) stopAmbient();
+      render();
+    });
+  }
+
   // Lore Correction panel
-  var tlf = document.getElementById('btn-toggle-lore-fix');
+  var tlf = 
+  // ── GM GUIDES ─────────────────────────────────────────────────────────────
+  document.getElementById('btn-open-gmguides') && document.getElementById('btn-open-gmguides').addEventListener('click', function(){
+    state.gmGuidesOpen = !state.gmGuidesOpen;
+    state.showJournal = false; state.showCodex = false;
+    render();
+  });
+  document.getElementById('btn-close-gmguides') && document.getElementById('btn-close-gmguides').addEventListener('click', function(){
+    state.gmGuidesOpen = false; render();
+  });
+  document.getElementById('btn-new-guide') && document.getElementById('btn-new-guide').addEventListener('click', function(){
+    state.gmGuideEditId = 'new'; render();
+  });
+  document.getElementById('btn-guide-cancel') && document.getElementById('btn-guide-cancel').addEventListener('click', function(){
+    state.gmGuideEditId = null; render();
+  });
+  document.querySelectorAll('.guide-cat-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.guide-cat-btn').forEach(function(b){
+        b.style.background='rgba(255,255,255,0.04)'; b.style.borderColor='rgba(255,255,255,0.1)'; b.style.color='#9ca3af';
+      });
+      btn.style.background='rgba(124,58,237,0.2)'; btn.style.borderColor='#7c3aed'; btn.style.color='#c084fc';
+      btn.dataset.selected='true';
+    });
+  });
+  document.getElementById('btn-guide-save') && document.getElementById('btn-guide-save').addEventListener('click', function(){
+    var titleEl = document.getElementById('guide-title-input');
+    var contentEl = document.getElementById('guide-content-input');
+    if (!titleEl || !contentEl) return;
+    var title = titleEl.value.trim();
+    var content = contentEl.value.trim();
+    if (!title || !content) { alert('Please fill in both a title and the guide content.'); return; }
+    var catBtn = document.querySelector('.guide-cat-btn[data-selected="true"]') || document.querySelector('.guide-cat-btn');
+    var cat = catBtn ? catBtn.dataset.cat : 'custom';
+    var editId = state.gmGuideEditId;
+    if (editId === 'new') {
+      addGuide({ title: title, content: content, category: cat });
+    } else {
+      var g = state.gmGuides.find(function(g){ return g.id === editId; });
+      if (g) { g.title = title; g.content = content; g.category = cat; saveGuides(); }
+    }
+    state.gmGuideEditId = null;
+    render();
+  });
+  document.getElementById('btn-guide-ai-expand') && document.getElementById('btn-guide-ai-expand').addEventListener('click', async function(){
+    var contentEl = document.getElementById('guide-content-input');
+    if (!contentEl || !contentEl.value.trim()) { alert('Write your rule idea first, then I can clean it up.'); return; }
+    this.textContent = '✦ Thinking...'; this.disabled = true;
+    try {
+      var result = await generateGuideFromDescription(contentEl.value.trim());
+      contentEl.value = result;
+    } catch(e) { alert('Could not generate — check your API key.'); }
+    this.textContent = '✦ Vesper: Clean up my rule'; this.disabled = false;
+  });
+  document.querySelectorAll('.btn-toggle-guide').forEach(function(btn){
+    btn.addEventListener('click', function(){ toggleGuide(Number(btn.dataset.gid)); render(); });
+  });
+  document.querySelectorAll('.btn-edit-guide').forEach(function(btn){
+    btn.addEventListener('click', function(){ state.gmGuideEditId = Number(btn.dataset.gid); render(); });
+  });
+  document.querySelectorAll('.btn-delete-guide').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if (confirm('Delete this guide?')) { deleteGuide(Number(btn.dataset.gid)); render(); }
+    });
+  });
+
+document.getElementById('btn-toggle-lore-fix');
   if(tlf) tlf.addEventListener('click', function(){ state.showLoreFix = !state.showLoreFix; render(); });
   var clf = document.getElementById('btn-close-lore-fix');
   if(clf) clf.addEventListener('click', function(){ state.showLoreFix = false; render(); });
@@ -6074,6 +6905,18 @@ function attachPlayEvents() {
         if (ci > -1) { chars[ci].pov = btn.dataset.pov; localStorage.setItem('aurora_chars', JSON.stringify(chars)); }
         render();
       }
+    });
+  });
+  // Survival mode buttons
+  document.querySelectorAll('.btn-survival-mode').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      state.survivalMode = btn.dataset.mode;
+      localStorage.setItem('aurora_survival_mode', state.survivalMode);
+      // Init survival stats if switching to survival/ironman
+      if (state.survivalMode === 'survival' || state.survivalMode === 'ironman') {
+        state.survivalStats = { hunger: 100, thirst: 100, shelter: 100 };
+      }
+      render();
     });
   });
 }
