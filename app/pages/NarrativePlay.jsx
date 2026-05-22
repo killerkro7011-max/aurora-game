@@ -1,722 +1,802 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { World, PlayerCharacter, WorldEvent } from "@/api/entities";
-import { useParams, useNavigate } from "react-router-dom";
 import { InvokeLLM } from "@/api/integrations";
+import { useParams, useNavigate } from "react-router-dom";
 
-// ─── Dice System ────────────────────────────────────────────────────────────
-function rollDice(sides = 20) {
-  return Math.floor(Math.random() * sides) + 1;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
+const STATS = ["STR","DEX","CON","INT","WIS","CHA","SMY"];
+const STAT_GRADE = (v) => { if(v>=151)return"A";if(v>=111)return"B";if(v>=71)return"C";if(v>=41)return"D";return"E"; };
+const GRADE_COLOR = {"A":"text-yellow-400","B":"text-green-400","C":"text-blue-400","D":"text-gray-400","E":"text-red-400"};
 
-function getCombatOutcome(playerRoll, enemyRoll) {
-  const diff = playerRoll - enemyRoll;
-  if (playerRoll === 20) return { result: "critical_hit", playerRoll, enemyRoll };
-  if (playerRoll === 1)  return { result: "critical_fail", playerRoll, enemyRoll };
-  if (diff >= 8)         return { result: "strong_hit", playerRoll, enemyRoll };
-  if (diff >= 3)         return { result: "hit", playerRoll, enemyRoll };
-  if (diff >= -2)        return { result: "graze", playerRoll, enemyRoll };
-  if (diff >= -7)        return { result: "miss", playerRoll, enemyRoll };
-  return                        { result: "bad_miss", playerRoll, enemyRoll };
-}
-
-function getSkillOutcome(roll) {
-  if (roll === 20) return "critical_success";
-  if (roll >= 15)  return "success";
-  if (roll >= 10)  return "partial";
-  if (roll >= 5)   return "fail";
-  return "critical_fail";
-}
-
-const COMBAT_ACTIONS = [
-  { label: "Slash", icon: "⚔️", type: "combat" },
-  { label: "Dodge & strike", icon: "🌀", type: "combat" },
-  { label: "Heavy blow", icon: "💥", type: "combat" },
-  { label: "Quick jab", icon: "👊", type: "combat" },
-  { label: "Retreat", icon: "🏃", type: "flee" },
-  { label: "Use ability", icon: "✨", type: "ability" },
-];
+const NARRATOR_STYLES = {
+  chronicler:  { label:"The Chronicler",  icon:"📜", style:"Write in rich literary prose — descriptive, layered, emotionally resonant. Treat every scene as a chapter in an epic novel." },
+  gamemaster:  { label:"The Game Master", icon:"🎲", style:"Balanced DnD-style narration. Clear stakes, fair challenges, tactical depth. Describe outcomes with precision." },
+  wildcard:    { label:"The Wildcard",    icon:"🃏", style:"Subvert expectations constantly. Introduce chaos, irony, unexpected consequences. The world has a dark sense of humor." },
+  grimdark:    { label:"The Grimdark",    icon:"💀", style:"Brutal honesty. No softening. Every wound counts, every loss matters. Beauty exists only to be broken." },
+  companion:   { label:"The Companion",   icon:"🌟", style:"Warm, accessible, encouraging. Celebrate player choices. Good for new players or lighter adventures." },
+};
 
 const EXPLORE_ACTIONS = [
-  { label: "Look around", icon: "👁️" },
-  { label: "Check inventory", icon: "🎒" },
-  { label: "Talk to someone", icon: "💬" },
-  { label: "Search the area", icon: "🔍" },
-  { label: "Rest", icon: "🌙" },
-  { label: "Sneak ahead", icon: "🐾" },
+  { label:"Look around", icon:"👁️" },{ label:"Talk to someone", icon:"💬" },
+  { label:"Search the area", icon:"🔍" },{ label:"Check inventory", icon:"🎒" },
+  { label:"Rest", icon:"🌙" },{ label:"Sneak ahead", icon:"🐾" },
 ];
 
-// ─── Typing animation ────────────────────────────────────────────────────────
-function TypingMessage({ text, speed = 16, onDone }) {
+// ─── Typing Message ───────────────────────────────────────────────────────────
+function TypingMessage({ text, speed=12, onDone }) {
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
   const idx = useRef(0);
-
   useEffect(() => {
-    idx.current = 0;
-    setDisplayed("");
-    setDone(false);
+    idx.current=0; setDisplayed(""); setDone(false);
     const interval = setInterval(() => {
-      if (idx.current < text.length) {
-        setDisplayed((prev) => prev + text[idx.current]);
-        idx.current++;
-      } else {
-        clearInterval(interval);
-        setDone(true);
-        if (onDone) onDone();
-      }
+      if (idx.current < text.length) { setDisplayed(p=>p+text[idx.current]); idx.current++; }
+      else { clearInterval(interval); setDone(true); if(onDone) onDone(); }
     }, speed);
     return () => clearInterval(interval);
   }, [text]);
-
-  return (
-    <span>
-      {displayed}
-      {!done && <span className="animate-pulse text-purple-400">▋</span>}
-    </span>
-  );
+  return <span>{displayed}{!done&&<span className="animate-pulse text-purple-400">▋</span>}</span>;
 }
 
-// ─── Dice Roll Visual ────────────────────────────────────────────────────────
-function DiceRollDisplay({ playerRoll, enemyRoll, result }) {
-  const resultStyles = {
-    critical_hit: "text-yellow-300 border-yellow-400/50 bg-yellow-500/10",
-    critical_fail: "text-red-400 border-red-500/50 bg-red-500/10",
-    strong_hit: "text-green-400 border-green-500/40 bg-green-500/10",
-    hit: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
-    graze: "text-orange-400 border-orange-500/30 bg-orange-500/10",
-    miss: "text-red-400 border-red-500/30 bg-red-500/10",
-    bad_miss: "text-red-500 border-red-600/40 bg-red-600/10",
-  };
-  const resultLabels = {
-    critical_hit: "⚡ CRITICAL HIT",
-    critical_fail: "💀 CRITICAL FAIL",
-    strong_hit: "💪 STRONG HIT",
-    hit: "✅ HIT",
-    graze: "〰️ GRAZE",
-    miss: "❌ MISS",
-    bad_miss: "😵 BADLY MISSED",
-  };
-
+// ─── Stat Check Pill ──────────────────────────────────────────────────────────
+function StatCheckPill({ check }) {
+  if (!check) return null;
+  const colors = { success:"bg-green-900/40 border-green-500/40 text-green-300", partial:"bg-yellow-900/40 border-yellow-500/40 text-yellow-300", fail:"bg-red-900/40 border-red-500/40 text-red-300" };
   return (
-    <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border text-xs font-bold my-1 ${resultStyles[result] || "text-gray-400 border-white/10"}`}>
-      <span>🎲 You: {playerRoll}</span>
-      <span className="text-white/30">vs</span>
-      <span>🎲 Enemy: {enemyRoll}</span>
-      <span className="ml-auto">{resultLabels[result] || result}</span>
+    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold mb-2 ${colors[check.outcome]||colors.partial}`}>
+      <span>{check.stat} check</span>
+      <span>·</span>
+      <span>{check.roll}/{check.dc}</span>
+      <span>·</span>
+      <span className="capitalize">{check.outcome}</span>
     </div>
   );
 }
 
-// ─── Health Bar ──────────────────────────────────────────────────────────────
-function HealthBar({ current, max = 100, label, color = "bg-green-500" }) {
-  const pct = Math.max(0, Math.min(100, (current / max) * 100));
-  const barColor = pct > 50 ? "bg-green-500" : pct > 25 ? "bg-yellow-500" : "bg-red-500";
+// ─── Living Codex ─────────────────────────────────────────────────────────────
+function LivingCodex({ world, char, npcs, quests, factionRep, keyEvents, onClose }) {
+  const [tab, setTab] = useState("world");
+  const tabs = [
+    { id:"world", label:"World Laws", icon:"⚖️" },
+    { id:"npcs", label:"People", icon:"👥" },
+    { id:"factions", label:"Factions", icon:"⚔️" },
+    { id:"quests", label:"Quests", icon:"📋" },
+    { id:"events", label:"History", icon:"📜" },
+  ];
+  let parsedFactions = [];
+  try { parsedFactions = JSON.parse(world?.factions||"[]"); } catch(e) {}
+
   return (
-    <div className="w-full">
-      {label && <div className="flex justify-between text-xs text-gray-400 mb-1"><span>{label}</span><span>{current}/{max}</span></div>}
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-        <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+    <div className="fixed inset-y-0 right-0 w-80 bg-gray-900 border-l border-white/10 z-40 flex flex-col shadow-2xl">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/30">
+        <span className="font-bold text-sm">📚 Living Codex</span>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">×</button>
+      </div>
+      <div className="flex gap-1 overflow-x-auto px-2 py-2 border-b border-white/5">
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            className={`flex-shrink-0 px-2 py-1 rounded-lg text-xs font-medium transition ${tab===t.id?"bg-purple-600 text-white":"bg-white/5 text-gray-400 hover:bg-white/10"}`}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 text-sm space-y-3">
+        {tab==="world" && (
+          <div className="space-y-3">
+            {world?.magic_law && <div className="bg-white/5 rounded-xl p-3"><p className="text-xs text-purple-400 font-bold mb-1">⚡ Magic Law</p><p className="text-gray-300 text-xs">{world.magic_law}</p></div>}
+            {world?.death_law && <div className="bg-white/5 rounded-xl p-3"><p className="text-xs text-red-400 font-bold mb-1">💀 Death Law</p><p className="text-gray-300 text-xs">{world.death_law}</p></div>}
+            {world?.reality_law && <div className="bg-white/5 rounded-xl p-3"><p className="text-xs text-cyan-400 font-bold mb-1">🌀 Reality Law</p><p className="text-gray-300 text-xs">{world.reality_law}</p></div>}
+            {world?.rules_of_nature && <div className="bg-white/5 rounded-xl p-3"><p className="text-xs text-green-400 font-bold mb-1">🌿 Natural Laws</p><p className="text-gray-300 text-xs">{world.rules_of_nature}</p></div>}
+          </div>
+        )}
+        {tab==="npcs" && (
+          <div className="space-y-2">
+            {npcs.length===0 && <p className="text-gray-600 text-xs text-center py-4">No NPCs encountered yet.</p>}
+            {npcs.map((n,i)=>(
+              <div key={i} className="bg-white/5 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-white text-sm">{n.name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${n.attitude==="hostile"?"bg-red-500/20 text-red-400":n.attitude==="friendly"?"bg-green-500/20 text-green-400":"bg-gray-500/20 text-gray-400"}`}>{n.attitude}</span>
+                </div>
+                {n.notes && <p className="text-xs text-gray-400">{n.notes}</p>}
+                {n.location && <p className="text-xs text-gray-500 mt-1">📍 {n.location}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        {tab==="factions" && (
+          <div className="space-y-2">
+            {parsedFactions.map((f,i)=>{
+              const rep = factionRep[f.name]||0;
+              const label = rep>=60?"Allied":rep>=20?"Friendly":rep>=-20?"Neutral":rep>=-60?"Hostile":"Sworn Enemy";
+              const color = rep>=20?"text-green-400":rep>=-20?"text-gray-400":"text-red-400";
+              return (
+                <div key={i} className="bg-white/5 rounded-xl p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-white text-sm">{f.name}</span>
+                    <span className={`text-xs font-semibold ${color}`}>{label}</span>
+                  </div>
+                  {f.goal && <p className="text-xs text-gray-400 mt-1">{f.goal}</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {tab==="quests" && (
+          <div className="space-y-2">
+            {quests.length===0 && <p className="text-gray-600 text-xs text-center py-4">No active quests.</p>}
+            {quests.map((q,i)=>(
+              <div key={i} className={`rounded-xl p-3 border ${q.status==="active"?"bg-yellow-900/10 border-yellow-500/20":"bg-white/5 border-white/10"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-white text-sm">{q.title}</span>
+                  <span className={`text-xs ${q.status==="active"?"text-yellow-400":q.status==="complete"?"text-green-400":"text-gray-500"}`}>{q.status}</span>
+                </div>
+                {q.desc && <p className="text-xs text-gray-400">{q.desc}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        {tab==="events" && (
+          <div className="space-y-2">
+            {keyEvents.length===0 && <p className="text-gray-600 text-xs text-center py-4">No key events yet.</p>}
+            {[...keyEvents].reverse().map((e,i)=>(
+              <div key={i} className="bg-white/5 rounded-xl p-3">
+                <p className="text-xs text-gray-500 mb-0.5">Turn {e.turn}</p>
+                <p className="text-xs text-gray-300">{e.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Chapter Save Toast ──────────────────────────────────────────────────────
-function SaveToast({ visible }) {
-  return (
-    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${visible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"}`}>
-      <div className="bg-purple-700 text-white text-sm px-5 py-2.5 rounded-full shadow-xl flex items-center gap-2">
-        <span>📖</span> Chapter saved!
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function NarrativePlay() {
   const { worldId, characterId } = useParams();
   const navigate = useNavigate();
 
-  const [world, setWorld]           = useState(null);
-  const [character, setCharacter]   = useState(null);
-  const [charHP, setCharHP]         = useState(100);
-  const [messages, setMessages]     = useState([]);
-  const [input, setInput]           = useState("");
-  const [loading, setLoading]       = useState(false);
-  const [initializing, setInit]     = useState(true);
-  const [isTyping, setIsTyping]     = useState(false);
-  const [showStats, setShowStats]   = useState(false);
-  const [inCombat, setInCombat]     = useState(false);
-  const [enemy, setEnemy]           = useState(null); // { name, hp, maxHp }
-  const [chapters, setChapters]     = useState([]);
-  const [showChapters, setShowChapters] = useState(false);
-  const [saveToast, setSaveToast]   = useState(false);
-  const [lastRoll, setLastRoll]     = useState(null);
-  const [actionCount, setActionCount] = useState(0);
+  // Core state
+  const [world, setWorld] = useState(null);
+  const [char, setChar] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [turn, setTurn] = useState(0);
 
-  // Rolling memory — keep last 12 exchanges to pass as context
-  const memoryRef = useRef([]);
-  const messagesEndRef = useRef(null);
+  // Character state (persisted to DB)
+  const [charHP, setCharHP] = useState(100);
+  const [stats, setStats] = useState({});
+  const [gold, setGold] = useState(10);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [craftingSkills, setCraftingSkills] = useState([]);
+  const [npcs, setNpcs] = useState([]);
+  const [quests, setQuests] = useState([]);
+  const [factionRep, setFactionRep] = useState({});
+  const [campaignSummary, setCampaignSummary] = useState("");
+  const [campaignTimeline, setCampaignTimeline] = useState([]);
+  const [keyEvents, setKeyEvents] = useState([]);
+  const [recentMemory, setRecentMemory] = useState([]);
+  const [worldTime, setWorldTime] = useState({ day:1, month:1, year:1, hour:8 });
+  const [survivalStats, setSurvivalStats] = useState({ hunger:100, thirst:100, shelter:100 });
 
+  // UI state
+  const [narratorStyle, setNarratorStyle] = useState("gamemaster");
+  const [survivalMode, setSurvivalMode] = useState("standard");
+  const [pov, setPov] = useState("second");
+  const [inputMode, setInputMode] = useState("action");
+  const [lastStatCheck, setLastStatCheck] = useState(null);
+  const [codexOpen, setCodexOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  const [deathScreen, setDeathScreen] = useState(false);
+  const [deathCount, setDeathCount] = useState(0);
+  const [typingDone, setTypingDone] = useState(true);
+
+  const endRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // ─── Load world + character ────────────────────────────────────────────────
   useEffect(() => {
-    async function init() {
-      try {
-        const [w, c] = await Promise.all([World.get(worldId), PlayerCharacter.get(characterId)]);
-        setWorld(w);
-        setCharacter(c);
-        setCharHP(c.health || 100);
-        await generateOpening(w, c);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setInit(false);
-      }
-    }
-    init();
+    Promise.all([
+      World.get(worldId),
+      PlayerCharacter.get(characterId),
+    ]).then(([w, c]) => {
+      setWorld(w);
+      setChar(c);
+      setStats(c.stats || Object.fromEntries(STATS.map(s=>[s,50])));
+      setCharHP(c.charHP ?? 100);
+      setGold(c.gold ?? 10);
+      setInventoryItems(c.inventoryItems || []);
+      setCraftingSkills(c.craftingSkills || []);
+      setNpcs(c.npcs || []);
+      setQuests(c.quests || []);
+      setFactionRep(c.factionRep || {});
+      setCampaignSummary(c.campaignSummary || "");
+      setCampaignTimeline(c.campaignTimeline || []);
+      setKeyEvents(c.keyEvents || []);
+      setRecentMemory(c.recentMemory || []);
+      setWorldTime(c.worldTime || { day:1, month:1, year:1, hour:8 });
+      setSurvivalStats(c.survivalStats || { hunger:100, thirst:100, shelter:100 });
+      setDeathCount(c.deathCount || 0);
+      setSurvivalMode(c.survival_mode || "standard");
+      setPov(c.pov || "second");
+      setNarratorStyle(c.narratorStyle || "gamemaster");
+      setLoading(false);
+    });
   }, [worldId, characterId]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
 
-  // ── System Prompt ──────────────────────────────────────────────────────────
-  const buildSystemPrompt = (w, c, hp = null) => `
-You are the Narrator of "${w.name}" — a cinematic, immersive interactive story.
+  // ─── Save character state to DB ────────────────────────────────────────────
+  const saveChar = useCallback(async (updates={}) => {
+    if (!characterId) return;
+    try {
+      await PlayerCharacter.update(characterId, {
+        charHP, stats, gold, inventoryItems, craftingSkills,
+        npcs, quests, factionRep, campaignSummary, campaignTimeline,
+        keyEvents, recentMemory, worldTime, survivalStats, deathCount,
+        survival_mode: survivalMode, pov, narratorStyle,
+        current_location: char?.current_location,
+        level: char?.level || 1,
+        experience: char?.experience || 0,
+        ...updates,
+      });
+    } catch(e) { console.error("Save failed:", e); }
+  }, [characterId, charHP, stats, gold, inventoryItems, craftingSkills, npcs, quests, factionRep, campaignSummary, campaignTimeline, keyEvents, recentMemory, worldTime, survivalStats, deathCount, survivalMode, pov, narratorStyle, char]);
+
+  // ─── Stat check engine ────────────────────────────────────────────────────
+  const performStatCheck = (action, currentStats) => {
+    const lower = action.toLowerCase();
+    let stat = "SMY", weight = 0.5;
+    if (/fight|attack|slash|strike|punch|block|swing|combat/.test(lower)) { stat="STR"; weight=0.7; }
+    else if (/dodge|sneak|run|jump|climb|hide|flee|escape/.test(lower)) { stat="DEX"; weight=0.7; }
+    else if (/endure|resist|survive|withstand|push through/.test(lower)) { stat="CON"; weight=0.6; }
+    else if (/study|examine|read|analyze|understand|research|recall/.test(lower)) { stat="INT"; weight=0.6; }
+    else if (/sense|feel|notice|detect|perceive|meditate/.test(lower)) { stat="WIS"; weight=0.6; }
+    else if (/persuade|charm|deceive|negotiate|seduce|intimidate|lead/.test(lower)) { stat="CHA"; weight=0.65; }
+    else if (/focus|will|endure|push|overcome|believe/.test(lower)) { stat="SMY"; weight=0.55; }
+
+    const statVal = currentStats[stat] || 50;
+    const roll = Math.floor(Math.random()*20)+1;
+    const dc = Math.floor(30 + (100-statVal)*0.4);
+    const effective = roll*weight*2 + statVal*0.3;
+    const outcome = effective >= dc ? "success" : effective >= dc*0.7 ? "partial" : "fail";
+    return { stat, roll, dc: Math.floor(dc), outcome, statVal };
+  };
+
+  // ─── Compress campaign memory ──────────────────────────────────────────────
+  const compressMemory = async (memory, existing) => {
+    setSummarizing(true);
+    try {
+      const res = await InvokeLLM({
+        prompt: `Compress this campaign memory into a concise chronicle (max 400 words). Preserve key plot beats, character decisions, NPC introductions, and consequences. Existing summary: "${existing||"(none)"}"\n\nNew events:\n${memory.map(m=>(m.role==="player"?"Player: ":"Narrator: ")+m.text).join("\n\n")}`,
+        model: "gpt-4o-mini",
+      });
+      setSummarizing(false);
+      return res;
+    } catch(e) { setSummarizing(false); return existing; }
+  };
+
+  // ─── Build system prompt ──────────────────────────────────────────────────
+  const buildSystemPrompt = (w, c, overrides={}) => {
+    const ns = NARRATOR_STYLES[narratorStyle] || NARRATOR_STYLES.gamemaster;
+    const currentStats = overrides.stats || stats;
+    const currentHP = overrides.charHP ?? charHP;
+    const currentSurvival = overrides.survivalStats || survivalStats;
+
+    const npcCtx = npcs.length > 0
+      ? npcs.map(n=>`- ${n.name} [${n.attitude}]${n.location?" | "+n.location:""}${n.notes?"\n  "+n.notes:""}`).join("\n")
+      : "None encountered yet.";
+
+    const factionCtx = Object.keys(factionRep).length > 0
+      ? Object.entries(factionRep).map(([f,r])=>{
+          const label = r>=60?"Allied":r>=20?"Friendly":r>=-20?"Neutral":r>=-60?"Hostile":"Sworn Enemy";
+          return `- ${f}: ${label} (${r})`;
+        }).join("\n")
+      : "None established.";
+
+    const questCtx = quests.filter(q=>q.status==="active").map(q=>`- ${q.title}: ${q.desc||""}`).join("\n") || "None active.";
+
+    const timeCtx = `Day ${worldTime.day}, Hour ${worldTime.hour}:00 (${worldTime.hour>=20||worldTime.hour<6?"Night":worldTime.hour<12?"Morning":worldTime.hour<18?"Afternoon":"Evening"})`;
+
+    let survivalCtx = "";
+    if (survivalMode==="survival"||survivalMode==="ironman") {
+      survivalCtx = `\nSURVIVAL — Hunger: ${currentSurvival.hunger}% | Thirst: ${currentSurvival.thirst}% | Shelter: ${currentSurvival.shelter}%. Impose stat penalties naturally if any hit 0.`;
+    } else if (survivalMode==="nightmare") {
+      survivalCtx = "\nNIGHTMARE MODE: One death ends the run. Describe danger at full weight. No softening.";
+    } else if (survivalMode==="story") {
+      survivalCtx = "\nSTORY MODE: Death suspended. Focus on narrative richness.";
+    }
+
+    // Parse factions for narrator
+    let factionsFormatted = w.factions || "Various factions.";
+    try {
+      const facs = JSON.parse(w.factions||"[]");
+      if (facs.length) factionsFormatted = facs.map(f=>`${f.name}${f.goal?" ("+f.goal+")":""}${f.leader?" | Led by: "+f.leader:""}`).join("; ");
+    } catch(e) {}
+
+    // Parse races
+    let racesFormatted = "";
+    try {
+      const races = JSON.parse(w.races||"[]");
+      if (races.length) racesFormatted = "\n- Races: " + races.map(r=>`${r.name}${r.traits?" ["+r.traits+"]":""}`).join("; ");
+    } catch(e) {}
+
+    // GM Guides injection
+    let guidesCtx = "";
+    try {
+      const guides = JSON.parse(w.gmGuides||"[]");
+      const active = guides.filter(g=>g.active);
+      if (active.length) guidesCtx = "\n\nGM GUIDE CONSTRAINTS (ABSOLUTE RULES — override default narration):\n" + active.map(g=>`[${g.category}] ${g.title}: ${g.rule}`).join("\n");
+    } catch(e) {}
+
+    const statStr = STATS.map(s=>`${s}:${currentStats[s]||50}(${STAT_GRADE(currentStats[s]||50)})`).join(" ");
+
+    return `You are the Narrator of "${w.name}" — a cinematic, immersive AI-driven RPG world.
+NARRATOR STYLE: ${ns.label} — ${ns.style}
+POV: ${pov==="first"?"First person (I raise my blade...)":(pov==="third"?`Third person (${c.name} moves through shadows...)`:(`Second person (You step forward...)`))}
 
 WORLD:
-- Setting: ${w.setting} | Climate: ${w.climate} | Magic: ${w.magic_level} | Tech: ${w.technology_level}
-- Danger: ${w.danger_level} | Population: ${w.population_density}
-- Lore: ${w.lore || "A world rich with untold history."}
-- Factions: ${w.factions || "Various groups vie for power."}
-- Landmarks: ${w.landmarks || "Ancient ruins and forgotten places."}
-- Nature Rules: ${w.rules_of_nature || "Standard physics with hints of the arcane."}
+- Setting: ${w.setting||"Fantasy"} | Climate: ${w.climate||"Mixed"} | Magic: ${w.magic_level} | Tech: ${w.technology_level}
+- Danger: ${w.danger_level} | Scale: ${w.world_scale||"unknown"} | Genre: ${w.genre_tone||""}
+- Description: ${w.description||"A world of untold stories."}
+- Lore: ${w.lore||"A world rich with history."}
+- Factions: ${factionsFormatted}${racesFormatted}
+- Landmarks: ${w.landmarks||"Ancient and forgotten places."}
+${w.magic_law?"- MAGIC LAW (BINDING): "+w.magic_law+"\n":""}${w.death_law?"- DEATH LAW (BINDING): "+w.death_law+"\n":""}${w.reality_law?"- REALITY LAW (BINDING): "+w.reality_law+"\n":""}${w.rules_of_nature?"- Natural Laws: "+w.rules_of_nature+"\n":""}${w.power_system_type?"- Power System: "+w.power_system_type+(w.rank_names?" | Ranks: "+w.rank_names:"")+"\n":""}${w.secrets_mysteries?"- World Secrets (reveal slowly): "+w.secrets_mysteries+"\n":""}
+- Current Time: ${timeCtx}${survivalCtx}
 
 CHARACTER:
-- Name: ${c.name} | Class: ${c.class} | Alignment: ${c.alignment}
-- Backstory: ${c.backstory || "A mysterious past."}
-- Abilities: ${c.abilities || "Standard class skills."}
-- Inventory: ${c.inventory}
-- Location: ${c.current_location}
-- Health: ${hp !== null ? hp : c.health}/100 | Level: ${c.level}
+- Name: ${c.name} | Class: ${c.class} | Race: ${c.race||"Unknown"} | Alignment: ${c.alignment}
+${c.origin?"- Origin: "+c.origin.replace(/_/g," ")+(c.origin_detail?" — "+c.origin_detail:"")+"\n":""}${c.flaw?"- ACTIVE FLAW: "+c.flaw.replace(/_/g," ")+(c.flaw_detail?" — "+c.flaw_detail:"")+"\n  [This flaw must create real consequences — not cosmetic flavor.]\n":""}
+- Backstory: ${c.backstory||"A mysterious past."}
+- Abilities: ${c.abilities||"Standard class skills."}
+- Stats: ${statStr}
+- Health: ${currentHP}/100 | Level: ${c.level||1} | Gold: ${gold}g
+- Location: ${c.current_location||w.name}
+- Inventory: ${inventoryItems.length>0?inventoryItems.map(i=>i.name+(i.equipped?"[E]":"")).join(", "):"Basic supplies"}
 
-NARRATIVE RULES:
-- Write in present tense, second person ("You step forward...").
-- Keep responses to 2-4 punchy paragraphs. Make every word count.
-- End each non-combat response with an implicit decision point or tension.
-- Adapt tone to world danger level and current situation.
+CAMPAIGN CHRONICLE:
+${campaignSummary||(campaignTimeline.length===0?"This adventure has just begun.":"")}
 
-COMBAT RULES (CRITICAL — follow exactly):
-- When combat starts, introduce the enemy vividly. Format: [COMBAT_START:EnemyName:HP] e.g. [COMBAT_START:City Guard:60]
-- During combat, you receive a dice roll result. Write the combat beat AS IF IT'S HAPPENING IN REAL TIME — no turn language, no "it is your turn". Describe the action cinematically based on the roll outcome:
-  * critical_hit → devastating, adrenaline-pumping victory moment
-  * strong_hit → clean, satisfying strike
-  * hit → solid contact, enemy staggers
-  * graze → near miss, both sides scramble, close call
-  * miss → the enemy dodges at the last second, counter-attacks
-  * bad_miss → humiliating miss, enemy gains the upper hand
-  * critical_fail → disaster — something goes very wrong
-- After describing the player's action, describe the enemy's counter-move based on ENEMY_ROLL.
-- Deal damage based on roll: critical_hit=25-30, strong_hit=15-20, hit=10-14, graze=5-9, miss=0, bad_miss=0 (enemy hits player for 10-20)
-- Format damage at end: [PDMG:15] for player damage dealt, [EDMG:12] for enemy damage to player.
-- When enemy HP hits 0: [COMBAT_END:victory]
-- When player HP hits 0: [COMBAT_END:defeat]
-- If player flees successfully: [COMBAT_END:fled]
+ACTIVE QUESTS:
+${questCtx}
 
-MEMORY SYSTEM:
-Use the story history provided to maintain continuity. Remember NPCs, locations visited, choices made.
-`;
+KNOWN NPCS:
+${npcCtx}
 
-  // ── Opening Scene ──────────────────────────────────────────────────────────
-  const generateOpening = async (w, c) => {
-    setIsTyping(true);
-    try {
-      const response = await InvokeLLM({
-        prompt: `Begin the story. Set the opening scene for ${c.name} (${c.class}, ${c.alignment}) arriving at "${c.current_location}". Make it cinematic and atmospheric. Draw from the world's lore, climate, and danger level. Hook them immediately.`,
-        system_prompt: buildSystemPrompt(w, c),
-        response_type: "text",
-      });
-      const msg = { role: "narrator", text: response, id: Date.now(), isNew: true };
-      setMessages([msg]);
-      memoryRef.current = [{ role: "narrator", text: response }];
-    } catch (e) {
-      const fallback = `You open your eyes. The world of ${w.name} surrounds you — ${w.climate.toLowerCase()} air, the distant sounds of ${w.setting.toLowerCase()} life. As a ${c.class}, you've trained for this. Now it begins. What do you do?`;
-      setMessages([{ role: "narrator", text: fallback, id: Date.now(), isNew: true }]);
-      memoryRef.current = [{ role: "narrator", text: fallback }];
-    }
-    setIsTyping(false);
+FACTION STANDING:
+${factionCtx}
+${guidesCtx}
+
+NARRATOR RULES:
+1. RULE CONSISTENCY ENGINE: Check every event, NPC action, and consequence against the World Laws above. Never violate them.
+2. STAT CONSEQUENCE ENGINE: Actions succeed/fail based on character stats. The stat check result you'll receive tells you the outcome — honor it.
+3. After each turn, include a JSON block at the very end (do not show to player): {"state":{"hp_change":0,"location":"...","lore_fix":null,"npc":{"name":"...","attitude":"neutral","notes":"..."},"quest":{"title":"...","status":"active","desc":"..."},"faction":{"name":"...","rep_change":0},"time_advance":1,"key_event":null,"xp_gain":0}}
+4. Keep responses 2-4 paragraphs. Be vivid but not bloated.
+5. Never let the player do something their stats make impossible without consequence.
+6. If the player's FLAW is relevant — activate it. Don't save them from their own nature.`;
   };
 
-  // ── Parse narrator response for combat tags ────────────────────────────────
-  const parseResponse = (text, currentHP, currentEnemy) => {
-    let cleanText = text;
-    let newHP = currentHP;
-    let newEnemy = currentEnemy ? { ...currentEnemy } : null;
-    let combatStarted = false;
-    let combatEnded = null;
-
-    // Combat start
-    const startMatch = cleanText.match(/\[COMBAT_START:([^:]+):(\d+)\]/);
-    if (startMatch) {
-      const eName = startMatch[1];
-      const eHP = parseInt(startMatch[2]);
-      newEnemy = { name: eName, hp: eHP, maxHp: eHP };
-      combatStarted = true;
-      cleanText = cleanText.replace(startMatch[0], "").trim();
-    }
-
-    // Player damage dealt
-    const pdmgMatch = cleanText.match(/\[PDMG:(\d+)\]/);
-    if (pdmgMatch && newEnemy) {
-      const dmg = parseInt(pdmgMatch[1]);
-      newEnemy.hp = Math.max(0, newEnemy.hp - dmg);
-      cleanText = cleanText.replace(pdmgMatch[0], "").trim();
-    }
-
-    // Enemy damage to player
-    const edmgMatch = cleanText.match(/\[EDMG:(\d+)\]/);
-    if (edmgMatch) {
-      const dmg = parseInt(edmgMatch[1]);
-      newHP = Math.max(0, newHP - dmg);
-      cleanText = cleanText.replace(edmgMatch[0], "").trim();
-    }
-
-    // Combat end
-    const endMatch = cleanText.match(/\[COMBAT_END:(victory|defeat|fled)\]/);
-    if (endMatch) {
-      combatEnded = endMatch[1];
-      cleanText = cleanText.replace(endMatch[0], "").trim();
-    }
-
-    return { cleanText, newHP, newEnemy, combatStarted, combatEnded };
+  // ─── Parse narrator state updates ─────────────────────────────────────────
+  const parseStateUpdate = (response) => {
+    const match = response.match(/\{"state":([\s\S]*?)\}(?:\s*)$/);
+    if (!match) return null;
+    try { return JSON.parse('{"state":'+match[1]+"}").state; } catch(e) { return null; }
   };
 
-  // ── Add message helper ─────────────────────────────────────────────────────
-  const addMessage = (msg) => {
-    setMessages((prev) => [...prev, msg]);
-    if (msg.role === "narrator" || msg.role === "player") {
-      memoryRef.current = [...memoryRef.current, { role: msg.role, text: msg.text }].slice(-24);
-    }
+  const cleanResponse = (response) => {
+    return response.replace(/\{"state":[\s\S]*?\}(?:\s*)$/, "").trim();
   };
 
-  // ── Build memory context string ────────────────────────────────────────────
-  const getMemoryContext = () => {
-    return memoryRef.current
-      .map((m) => (m.role === "player" ? `Player: ${m.text}` : `Narrator: ${m.text}`))
-      .join("\n\n");
-  };
+  // ─── Apply narrator state updates ─────────────────────────────────────────
+  const applyStateUpdate = (upd, currentStats) => {
+    if (!upd) return;
+    let newStats = { ...currentStats };
+    let newHP = charHP;
+    let newGold = gold;
+    let newNPCs = [...npcs];
+    let newQuests = [...quests];
+    let newFactionRep = { ...factionRep };
+    let newWorldTime = { ...worldTime };
+    let newKeyEvents = [...keyEvents];
+    let newTimeline = [...campaignTimeline];
+    let newSurvival = { ...survivalStats };
+    let newChar = char ? { ...char } : null;
 
-  // ── Combat action ──────────────────────────────────────────────────────────
-  const handleCombatAction = async (action) => {
-    if (loading) return;
-
-    if (action.type === "flee") {
-      const roll = rollDice(20);
-      const fled = roll >= 12;
-      const rollMsg = { role: "roll", playerRoll: roll, enemyRoll: 0, result: fled ? "hit" : "miss", id: Date.now() };
-      addMessage(rollMsg);
-      addMessage({ role: "player", text: `I try to retreat!`, id: Date.now() + 1 });
-      setLoading(true);
-      setIsTyping(true);
-      try {
-        const response = await InvokeLLM({
-          prompt: `${getMemoryContext()}\n\nPlayer attempts to flee combat. Dice roll: ${roll}/20. ${fled ? "They escape!" : "They fail to escape."} ${fled ? "[COMBAT_END:fled]" : "The enemy cuts off their retreat."} Write this as a cinematic moment.`,
-          system_prompt: buildSystemPrompt(world, character, charHP),
-          response_type: "text",
-        });
-        const { cleanText, combatEnded } = parseResponse(response, charHP, enemy);
-        addMessage({ role: "narrator", text: cleanText, id: Date.now() + 2, isNew: true });
-        if (fled || combatEnded === "fled") { setInCombat(false); setEnemy(null); }
-      } catch (e) {}
-      setLoading(false);
-      setIsTyping(false);
-      return;
+    if (upd.hp_change) newHP = Math.max(0, Math.min(100, newHP + upd.hp_change));
+    if (upd.location && newChar) newChar = { ...newChar, current_location: upd.location };
+    if (upd.time_advance) {
+      newWorldTime = { ...newWorldTime, hour: (newWorldTime.hour + (upd.time_advance||1)) % 24 };
+      if (newWorldTime.hour < worldTime.hour) newWorldTime.day = (newWorldTime.day||1) + 1;
     }
 
-    // Roll dice for both player and enemy
-    const pRoll = rollDice(20);
-    const eRoll = rollDice(20);
-    const outcome = getCombatOutcome(pRoll, eRoll);
-    setLastRoll(outcome);
+    // Survival degradation
+    if (survivalMode==="survival"||survivalMode==="ironman") {
+      newSurvival = { hunger:Math.max(0,newSurvival.hunger-2), thirst:Math.max(0,newSurvival.thirst-3), shelter:Math.max(0,newSurvival.shelter-1) };
+    }
 
-    const rollMsg = { role: "roll", playerRoll: pRoll, enemyRoll: eRoll, result: outcome.result, id: Date.now() };
-    addMessage(rollMsg);
-    addMessage({ role: "player", text: `${action.icon} ${action.label}`, id: Date.now() + 1 });
-
-    setLoading(true);
-    setIsTyping(true);
-
-    try {
-      const prompt = `${getMemoryContext()}
-
-COMBAT ACTION: Player chose to "${action.label}" against ${enemy?.name || "the enemy"}.
-PLAYER ROLL: ${pRoll}/20 | ENEMY ROLL: ${eRoll}/20 | OUTCOME: ${outcome.result}
-CURRENT STATE: Player HP: ${charHP}/100, Enemy HP: ${enemy?.hp || "?"}/${enemy?.maxHp || "?"}
-
-Write this combat beat cinematically in real time — no turn language. Describe the player's attack attempt, then the enemy's reaction and counter-move based on the rolls. Use [PDMG:X] and [EDMG:X] tags for damage. If the enemy is defeated, use [COMBAT_END:victory]. Make the reader feel the adrenaline.`;
-
-      const response = await InvokeLLM({
-        prompt,
-        system_prompt: buildSystemPrompt(world, character, charHP),
-        response_type: "text",
-      });
-
-      const { cleanText, newHP, newEnemy, combatEnded } = parseResponse(response, charHP, enemy);
-      setCharHP(newHP);
-      if (newEnemy) setEnemy(newEnemy);
-      addMessage({ role: "narrator", text: cleanText, id: Date.now() + 2, isNew: true });
-
-      if (combatEnded === "victory") {
-        setInCombat(false);
-        setEnemy(null);
-        // Give XP
-        setCharacter((prev) => prev ? { ...prev, experience: (prev.experience || 0) + 50 } : prev);
-        // Log as world event
-        WorldEvent.create({
-          world_id: worldId,
-          title: `${character.name} defeated ${enemy?.name}`,
-          description: `In combat near ${character.current_location}, ${character.name} emerged victorious.`,
-          event_type: "Combat",
-          impact: "Medium",
-          affected_area: character.current_location,
-          narrative: cleanText,
-          resolved: true,
-        }).catch(() => {});
-      } else if (combatEnded === "defeat") {
-        setInCombat(false);
-        setEnemy(null);
-        addMessage({ role: "system", text: "⚰️ You have fallen. Your story ends here... for now.", id: Date.now() + 3 });
+    // NPC update
+    if (upd.npc?.name) {
+      const existing = newNPCs.findIndex(n=>n.name.toLowerCase()===upd.npc.name.toLowerCase());
+      if (existing>=0) {
+        newNPCs[existing] = { ...newNPCs[existing], ...upd.npc, lastSeen: turn };
+      } else {
+        newNPCs.push({ ...upd.npc, lastSeen: turn, history:[] });
       }
-    } catch (e) {
-      addMessage({ role: "narrator", text: "The battle rages on...", id: Date.now() + 2, isNew: true });
     }
-    setLoading(false);
-    setIsTyping(false);
+
+    // Quest update
+    if (upd.quest?.title) {
+      const qi = newQuests.findIndex(q=>q.title.toLowerCase()===upd.quest.title.toLowerCase());
+      if (qi>=0) newQuests[qi] = { ...newQuests[qi], ...upd.quest };
+      else newQuests.push({ ...upd.quest, addedTurn: turn });
+    }
+
+    // Faction rep
+    if (upd.faction?.name && upd.faction.rep_change) {
+      newFactionRep[upd.faction.name] = Math.max(-100, Math.min(100, (newFactionRep[upd.faction.name]||0) + upd.faction.rep_change));
+    }
+
+    // Key event
+    if (upd.key_event) newKeyEvents.push({ turn, text: upd.key_event });
+
+    // XP
+    if (upd.xp_gain && newChar) {
+      const newXP = (newChar.experience||0) + upd.xp_gain;
+      const newLevel = Math.floor(newXP/100)+1;
+      newChar = { ...newChar, experience: newXP, level: Math.min(newLevel, 100) };
+    }
+
+    // Stat growth (Journey mode)
+    if (char?.progression_mode !== "legend" && lastStatCheck) {
+      const sc = lastStatCheck;
+      if (sc.outcome === "success" || sc.outcome === "partial") {
+        const growth = sc.outcome==="success" ? 1 : 0; // small growth
+        newStats[sc.stat] = Math.min(200, (newStats[sc.stat]||50) + growth);
+      }
+    }
+
+    setCharHP(newHP);
+    setStats(newStats);
+    setGold(newGold);
+    setNpcs(newNPCs);
+    setQuests(newQuests);
+    setFactionRep(newFactionRep);
+    setWorldTime(newWorldTime);
+    setSurvivalStats(newSurvival);
+    setKeyEvents(newKeyEvents);
+    setCampaignTimeline(newTimeline);
+    if (newChar) setChar(newChar);
+
+    // Check death
+    if (newHP <= 0) handleDeath(newStats, newChar);
+
+    // Auto-save
+    saveChar({ charHP: newHP, stats: newStats, gold: newGold, npcs: newNPCs, quests: newQuests, factionRep: newFactionRep, worldTime: newWorldTime, survivalStats: newSurvival, keyEvents: newKeyEvents, campaignTimeline: newTimeline, ...(newChar||{}) });
+
+    return newStats;
   };
 
-  // ── Regular action / message ───────────────────────────────────────────────
-  const sendMessage = async (text) => {
-    if (!text.trim() || loading) return;
-    addMessage({ role: "player", text: text.trim(), id: Date.now() });
-    setInput("");
-    setLoading(true);
-    setIsTyping(true);
-
-    // Roll dice for skill checks on action words
-    const actionWords = ["sneak", "climb", "jump", "pick", "persuade", "intimidate", "search", "hack", "cast", "steal", "run", "dodge", "hide"];
-    const needsRoll = actionWords.some((w) => text.toLowerCase().includes(w));
-    let rollInfo = "";
-    if (needsRoll) {
-      const roll = rollDice(20);
-      const outcome = getSkillOutcome(roll);
-      const rollMsg = { role: "roll", playerRoll: roll, enemyRoll: null, result: outcome, id: Date.now() + 1 };
-      addMessage(rollMsg);
-      rollInfo = `\nSKILL CHECK ROLL: ${roll}/20 — outcome: ${outcome}. Let this influence the result of their action naturally.`;
+  // ─── Death handling ────────────────────────────────────────────────────────
+  const handleDeath = (currentStats, currentChar) => {
+    const newCount = deathCount + 1;
+    setDeathCount(newCount);
+    setDeathScreen(true);
+    if (survivalMode==="nightmare" || (survivalMode==="ironman" && newCount>=3)) {
+      // Permanent death
+    } else {
+      // Standard respawn — penalty
+      setTimeout(() => {
+        setCharHP(50);
+        setDeathScreen(false);
+        const respawnMsg = { role:"narrator", text:"You wake. The darkness retreats. You're alive — bruised, diminished, but breathing. The world doesn't forgive easily.", id: Date.now() };
+        setMessages(m=>[...m, respawnMsg]);
+      }, 3000);
     }
+  };
 
-    const newCount = actionCount + 1;
-    setActionCount(newCount);
+  // ─── Send message ──────────────────────────────────────────────────────────
+  const send = async () => {
+    if (!input.trim() || sending || !world || !char) return;
+    const userInput = input.trim();
+    setInput(""); setSending(true); setTypingDone(false);
+
+    // Stat check
+    const sc = performStatCheck(userInput, stats);
+    setLastStatCheck(sc);
+
+    // Build prefix based on input mode
+    const prefix = inputMode === "speech" ? `[${char.name} says]: ` : "";
+    const fullInput = prefix + userInput;
+
+    // Add to messages
+    const playerMsg = { role:"player", text: userInput, id: Date.now() };
+    setMessages(m => [...m, playerMsg]);
+
+    // Recent memory
+    const newMemory = [...recentMemory, { role:"player", text: userInput }];
 
     try {
-      const prompt = `${getMemoryContext()}
+      // Build messages for API
+      const sysPrompt = buildSystemPrompt(world, char);
+      const historyMsgs = recentMemory.slice(-8).map(m => ({
+        role: m.role === "player" ? "user" : "assistant",
+        content: m.text,
+      }));
 
-Player action: ${text.trim()}${rollInfo}`;
+      const statHint = `[STAT CHECK — ${sc.stat}: ${sc.statVal} | Roll: ${sc.roll}/${sc.dc} | Outcome: ${sc.outcome.toUpperCase()}. Honor this in your response.]`;
 
-      const response = await InvokeLLM({
-        prompt,
-        system_prompt: buildSystemPrompt(world, character, charHP),
-        response_type: "text",
+      const res = await InvokeLLM({
+        prompt: `${statHint}\n\nPlayer action: "${fullInput}"`,
+        model: "gpt-4o",
+        systemPrompt: sysPrompt,
+        messages: historyMsgs,
       });
 
-      const { cleanText, newHP, newEnemy, combatStarted } = parseResponse(response, charHP, enemy);
-      setCharHP(newHP);
-      if (newEnemy) { setEnemy(newEnemy); setInCombat(true); }
-      addMessage({ role: "narrator", text: cleanText, id: Date.now() + 2, isNew: true });
+      const cleanedRes = cleanResponse(res);
+      const stateUpd = parseStateUpdate(res);
 
-      // Auto-save chapter every 8 actions
-      if (newCount % 8 === 0) {
-        saveChapter(cleanText);
+      const narratorMsg = { role:"narrator", text: cleanedRes, id: Date.now()+1, statCheck: sc };
+      setMessages(m => [...m, narratorMsg]);
+
+      // Update memory
+      const updatedMemory = [...newMemory, { role:"narrator", text: cleanedRes }];
+      setRecentMemory(updatedMemory);
+
+      // Apply state updates
+      applyStateUpdate(stateUpd, stats);
+
+      // Compress memory every 10 turns
+      if (updatedMemory.length >= 10) {
+        const compressed = await compressMemory(updatedMemory, campaignSummary);
+        setCampaignSummary(compressed);
+        setRecentMemory([]);
+        saveChar({ campaignSummary: compressed, recentMemory: [] });
       }
-    } catch (e) {
-      addMessage({ role: "narrator", text: "The world shimmers... something interrupted the flow of time. Try again.", id: Date.now() + 2, isNew: true });
+
+      setTurn(t => t+1);
+    } catch(e) {
+      setMessages(m => [...m, { role:"narrator", text: "The narrative thread snapped. Something went wrong — try again.", id: Date.now()+1 }]);
     }
-    setLoading(false);
-    setIsTyping(false);
+    setSending(false);
+    setTypingDone(true);
+    inputRef.current?.focus();
   };
 
-  // ── Save Chapter ──────────────────────────────────────────────────────────
-  const saveChapter = (lastNarration = "") => {
-    const chapterNum = chapters.length + 1;
-    const snapshot = {
-      id: Date.now(),
-      num: chapterNum,
-      title: `Chapter ${chapterNum}`,
-      timestamp: new Date().toLocaleString(),
-      hp: charHP,
-      location: character?.current_location || "Unknown",
-      preview: lastNarration.slice(0, 120) + "...",
-      messageCount: messages.length,
-    };
-    setChapters((prev) => [...prev, snapshot]);
-    WorldEvent.create({
-      world_id: worldId,
-      title: `📖 Chapter ${chapterNum} — ${character?.name}'s Journey`,
-      description: snapshot.preview,
-      event_type: "Chapter",
-      impact: "Low",
-      affected_area: character?.current_location || "Unknown",
-      narrative: lastNarration,
-      resolved: true,
-    }).catch(() => {});
-    setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 2500);
-  };
+  // ─── Render ────────────────────────────────────────────────────────────────
+  if (loading) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400 animate-pulse text-sm">
+      Entering {world?.name || "the world"}...
+    </div>
+  );
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
-  };
+  if (!world || !char) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400 text-sm">
+      World or character not found.
+    </div>
+  );
 
-  // ── Loading screen ────────────────────────────────────────────────────────
-  if (initializing) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-6xl mb-4 animate-pulse">📖</div>
-          <p className="text-purple-300 text-lg font-medium">Opening the story...</p>
-          <p className="text-gray-500 text-sm mt-2">Weaving the threads of your world...</p>
-        </div>
-      </div>
-    );
-  }
+  // Death screen
+  if (deathScreen) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white">
+      <div className="text-6xl mb-6 animate-pulse">💀</div>
+      <h2 className="text-3xl font-bold mb-3">You have died.</h2>
+      <p className="text-gray-400 text-sm">
+        {survivalMode==="nightmare"?"This run is over. The world remembers nothing.":survivalMode==="ironman"&&deathCount>=3?"Three deaths. Your story ends here.":"Returning to the story..."}
+      </p>
+      {(survivalMode==="nightmare"||(survivalMode==="ironman"&&deathCount>=3)) && (
+        <button onClick={()=>navigate(`/worlds/${worldId}`)} className="mt-8 bg-white/10 hover:bg-white/20 px-8 py-3 rounded-xl font-bold transition">
+          Return to World
+        </button>
+      )}
+    </div>
+  );
 
-  // ── Main Render ───────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <SaveToast visible={saveToast} />
-
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-purple-950/20 to-gray-950 text-white flex flex-col">
       {/* Header */}
-      <div className="border-b border-white/10 bg-black/50 backdrop-blur-md px-4 py-3 flex items-center justify-between flex-shrink-0 z-10">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(`/worlds/${worldId}`)} className="text-gray-400 hover:text-white transition text-sm">
-            ← Exit
-          </button>
-          <div>
-            <h1 className="font-bold text-sm leading-tight flex items-center gap-2">
-              <span>📖</span> {world?.name}
-              {inCombat && <span className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full animate-pulse">⚔️ COMBAT</span>}
-            </h1>
-            <p className="text-xs text-purple-400">{character?.name} · {character?.class}</p>
-          </div>
+      <div className="border-b border-white/10 bg-black/40 backdrop-blur-md px-4 py-3 flex items-center gap-3 flex-shrink-0">
+        <button onClick={()=>navigate(`/worlds/${worldId}`)} className="text-gray-400 hover:text-white transition text-sm">←</button>
+
+        <div className="flex-1 min-w-0">
+          <h2 className="font-bold text-sm truncate">{char.name}</h2>
+          <p className="text-xs text-gray-500 truncate">{world.name} · Lv.{char.level||1} · {char.current_location}</p>
         </div>
+
+        {/* HP bar */}
         <div className="flex items-center gap-2">
-          <button onClick={() => saveChapter(messages[messages.length - 1]?.text || "")} className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition">
-            💾 Save
+          <div className="w-20 h-2 bg-white/10 rounded-full overflow-hidden">
+            <div className={`h-2 rounded-full transition-all ${charHP>50?"bg-green-500":charHP>25?"bg-yellow-500":"bg-red-500 animate-pulse"}`}
+              style={{ width:`${charHP}%` }}/>
+          </div>
+          <span className="text-xs text-gray-400 font-mono">{charHP}</span>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-1">
+          <button onClick={()=>setShowInventory(v=>!v)}
+            className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs hover:bg-white/10 transition" title="Inventory">
+            🎒
           </button>
-          <button onClick={() => setShowChapters(!showChapters)} className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition">
-            📖 {chapters.length}
+          <button onClick={()=>setCodexOpen(v=>!v)}
+            className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs hover:bg-white/10 transition" title="Living Codex">
+            📚
           </button>
-          <button onClick={() => setShowStats(!showStats)} className="text-xs bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition">
-            📊
+          <button onClick={()=>setShowSettings(v=>!v)}
+            className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-xs hover:bg-white/10 transition" title="Settings">
+            ⚙️
           </button>
         </div>
       </div>
 
-      {/* Stats Panel */}
-      {showStats && character && (
-        <div className="bg-black/70 border-b border-white/10 px-4 py-3 flex-shrink-0">
-          <div className="max-w-2xl mx-auto space-y-2">
-            <div className="grid grid-cols-4 gap-2 text-center text-xs">
-              <div className="bg-white/5 rounded-lg p-2">
-                <div className="text-gray-400">Level</div>
-                <div className="text-yellow-400 font-bold">{character.level}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2">
-                <div className="text-gray-400">XP</div>
-                <div className="text-blue-400 font-bold">{character.experience}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2">
-                <div className="text-gray-400">Class</div>
-                <div className="text-purple-400 font-bold">{character.class}</div>
-              </div>
-              <div className="bg-white/5 rounded-lg p-2">
-                <div className="text-gray-400">Location</div>
-                <div className="text-orange-400 font-bold truncate text-xs">{character.current_location}</div>
-              </div>
+      {/* Settings dropdown */}
+      {showSettings && (
+        <div className="border-b border-white/10 bg-gray-900/80 px-4 py-3 flex flex-wrap gap-4 text-xs">
+          <div>
+            <span className="text-gray-500 block mb-1">Narrator</span>
+            <div className="flex gap-1">
+              {Object.entries(NARRATOR_STYLES).map(([k,v])=>(
+                <button key={k} onClick={()=>setNarratorStyle(k)}
+                  className={`px-2 py-1 rounded-lg border transition ${narratorStyle===k?"border-purple-500 bg-purple-500/20 text-white":"border-white/10 bg-white/5 text-gray-400 hover:text-white"}`}
+                  title={v.label}>{v.icon}</button>
+              ))}
             </div>
-            <HealthBar current={charHP} label={`${character.name}'s Health`} />
-            {inCombat && enemy && <HealthBar current={enemy.hp} max={enemy.maxHp} label={enemy.name} />}
-            {character.inventory && (
-              <p className="text-xs text-gray-400">🎒 {character.inventory}</p>
-            )}
           </div>
-        </div>
-      )}
-
-      {/* Combat HP bar (always visible in combat) */}
-      {inCombat && enemy && !showStats && (
-        <div className="bg-black/60 border-b border-red-900/30 px-4 py-2 flex-shrink-0">
-          <div className="max-w-2xl mx-auto flex gap-4 items-center">
-            <div className="flex-1">
-              <HealthBar current={charHP} label={character?.name} />
-            </div>
-            <span className="text-red-400 font-bold text-lg">⚔️</span>
-            <div className="flex-1">
-              <HealthBar current={enemy.hp} max={enemy.maxHp} label={enemy.name} />
+          <div>
+            <span className="text-gray-500 block mb-1">Input Mode</span>
+            <div className="flex gap-1">
+              <button onClick={()=>setInputMode("action")} className={`px-2 py-1 rounded-lg border transition ${inputMode==="action"?"border-blue-500 bg-blue-500/20 text-white":"border-white/10 bg-white/5 text-gray-400"}`}>Action</button>
+              <button onClick={()=>setInputMode("speech")} className={`px-2 py-1 rounded-lg border transition ${inputMode==="speech"?"border-green-500 bg-green-500/20 text-white":"border-white/10 bg-white/5 text-gray-400"}`}>Dialogue</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Chapters Sidebar */}
-      {showChapters && (
-        <div className="bg-black/80 border-b border-white/10 px-4 py-3 flex-shrink-0 max-h-48 overflow-y-auto">
-          <div className="max-w-2xl mx-auto">
-            <p className="text-xs text-gray-400 mb-2 font-semibold">📖 Saved Chapters</p>
-            {chapters.length === 0 ? (
-              <p className="text-xs text-gray-600">No chapters saved yet. They auto-save every 8 actions, or hit 💾 anytime.</p>
-            ) : (
-              <div className="space-y-2">
-                {chapters.map((ch) => (
-                  <div key={ch.id} className="bg-white/5 rounded-lg p-3 text-xs">
-                    <div className="flex justify-between text-gray-300 font-medium mb-0.5">
-                      <span>{ch.title}</span>
-                      <span className="text-gray-500">{ch.timestamp}</span>
-                    </div>
-                    <p className="text-gray-500 line-clamp-1">{ch.preview}</p>
-                    <div className="flex gap-3 mt-1 text-gray-500">
-                      <span>❤️ {ch.hp}/100</span>
-                      <span>📍 {ch.location}</span>
-                    </div>
-                  </div>
-                ))}
+      {/* Survival bars */}
+      {(survivalMode==="survival"||survivalMode==="ironman") && (
+        <div className="border-b border-white/5 px-4 py-2 flex gap-4 text-xs">
+          {[["🍖","Hunger",survivalStats.hunger],["💧","Thirst",survivalStats.thirst],["🏕️","Shelter",survivalStats.shelter]].map(([icon,label,val])=>(
+            <div key={label} className="flex items-center gap-2">
+              <span>{icon}</span>
+              <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div className={`h-1.5 rounded-full ${val>50?"bg-green-500":val>25?"bg-yellow-500":"bg-red-500 animate-pulse"}`} style={{width:`${val}%`}}/>
               </div>
-            )}
-          </div>
+              <span className="text-gray-500">{val}%</span>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-2xl mx-auto space-y-4">
-          {messages.map((msg, i) => {
-            const isLastNarrator = msg.role === "narrator" && i === messages.length - 1;
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 max-w-3xl mx-auto w-full">
+        {messages.length === 0 && (
+          <div className="text-center py-16">
+            <div className="text-5xl mb-4">🌌</div>
+            <h3 className="text-xl font-bold mb-2">{world.name}</h3>
+            <p className="text-gray-400 text-sm max-w-md mx-auto mb-6">{world.description || "Your story begins here."}</p>
+            <button onClick={()=>{ setInput("I enter the world and look around."); }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 rounded-xl font-bold text-sm hover:from-purple-500 hover:to-pink-500 transition">
+              Begin Your Story →
+            </button>
+          </div>
+        )}
 
-            if (msg.role === "roll") {
-              return (
-                <div key={msg.id} className="max-w-sm mx-auto">
-                  {msg.enemyRoll !== null ? (
-                    <DiceRollDisplay playerRoll={msg.playerRoll} enemyRoll={msg.enemyRoll} result={msg.result} />
-                  ) : (
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/5 text-xs text-gray-400 font-medium">
-                      <span>🎲 Skill Check: {msg.playerRoll}/20</span>
-                      <span className="ml-auto capitalize text-purple-300">{msg.result?.replace("_", " ")}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            if (msg.role === "system") {
-              return (
-                <div key={msg.id} className="text-center">
-                  <span className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-full">{msg.text}</span>
-                </div>
-              );
-            }
-
-            if (msg.role === "player") {
-              return (
-                <div key={msg.id} className="flex justify-end">
-                  <div className="bg-indigo-600/20 border border-indigo-500/30 rounded-2xl rounded-tr-sm px-4 py-3 max-w-xs">
-                    <p className="text-indigo-100 text-sm">{msg.text}</p>
-                  </div>
-                </div>
-              );
-            }
-
-            if (msg.role === "narrator") {
-              return (
-                <div key={msg.id} className="bg-gradient-to-br from-gray-900 to-purple-950/20 border border-purple-900/30 rounded-2xl rounded-tl-sm p-5 shadow-lg">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-purple-400 text-xs font-semibold uppercase tracking-wider">📖 Narrator</span>
-                  </div>
-                  <p className="text-gray-100 leading-relaxed text-sm whitespace-pre-line">
-                    {isLastNarrator && msg.isNew && isTyping ? (
-                      <TypingMessage text={msg.text} onDone={() => setIsTyping(false)} />
-                    ) : (
-                      msg.text
-                    )}
-                  </p>
-                </div>
-              );
-            }
-            return null;
-          })}
-
-          {/* Narrator typing indicator */}
-          {isTyping && (messages.length === 0 || messages[messages.length - 1]?.role !== "narrator") && (
-            <div className="bg-gradient-to-br from-gray-900 to-purple-950/20 border border-purple-900/30 rounded-2xl rounded-tl-sm p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-purple-400 text-xs font-semibold uppercase tracking-wider">📖 Narrator</span>
-              </div>
-              <div className="flex gap-1.5">
-                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-              </div>
+        {messages.map((msg, i) => (
+          <div key={msg.id||i} className={`flex ${msg.role==="player"?"justify-end":"justify-start"}`}>
+            <div className={`max-w-[85%] ${msg.role==="player" ? "bg-purple-600/20 border border-purple-500/30 rounded-2xl rounded-tr-sm px-4 py-3 text-sm text-gray-200" : "text-gray-200 text-sm leading-relaxed"}`}>
+              {msg.role==="narrator" && msg.statCheck && i===messages.length-1 && (
+                <StatCheckPill check={msg.statCheck}/>
+              )}
+              {msg.role==="narrator" ? (
+                i===messages.length-1 && !typingDone ? (
+                  <TypingMessage text={msg.text} onDone={()=>setTypingDone(true)}/>
+                ) : (
+                  <span className="whitespace-pre-wrap">{msg.text}</span>
+                )
+              ) : (
+                <span>{msg.text}</span>
+              )}
             </div>
-          )}
+          </div>
+        ))}
 
-          <div ref={messagesEndRef} />
-        </div>
+        {sending && (
+          <div className="flex justify-start">
+            <div className="flex gap-1 items-center text-gray-500 text-sm">
+              <span className="animate-bounce" style={{animationDelay:"0ms"}}>●</span>
+              <span className="animate-bounce" style={{animationDelay:"150ms"}}>●</span>
+              <span className="animate-bounce" style={{animationDelay:"300ms"}}>●</span>
+            </div>
+          </div>
+        )}
+
+        {summarizing && <p className="text-center text-xs text-gray-600 animate-pulse">Compressing campaign memory...</p>}
+        <div ref={endRef}/>
       </div>
 
-      {/* Action Buttons */}
-      <div className="border-t border-white/5 px-4 py-2 flex-shrink-0 overflow-x-auto">
-        <div className="max-w-2xl mx-auto flex gap-2">
-          {(inCombat ? COMBAT_ACTIONS : EXPLORE_ACTIONS).map((action) => (
-            <button
-              key={action.label}
-              onClick={() => inCombat ? handleCombatAction(action) : sendMessage(action.label)}
-              disabled={loading}
-              className={`flex items-center gap-1.5 whitespace-nowrap text-xs border px-3 py-1.5 rounded-full transition disabled:opacity-40 ${
-                inCombat
-                  ? action.type === "flee"
-                    ? "bg-orange-900/20 border-orange-500/30 hover:bg-orange-600/20 text-orange-300"
-                    : "bg-red-900/20 border-red-500/30 hover:bg-red-600/20 text-red-300"
-                  : "bg-white/5 hover:bg-purple-600/20 border-white/10 hover:border-purple-500/40 text-gray-300"
-              }`}
-            >
-              <span>{action.icon}</span>
-              <span>{action.label}</span>
+      {/* Quick actions */}
+      {messages.length > 0 && !sending && (
+        <div className="px-4 pb-2 flex gap-2 overflow-x-auto max-w-3xl mx-auto w-full">
+          {EXPLORE_ACTIONS.map(a=>(
+            <button key={a.label} onClick={()=>{ setInput(a.label); }}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full text-xs text-gray-400 hover:text-white hover:bg-white/10 hover:border-purple-500/40 transition">
+              {a.icon} {a.label}
             </button>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Input */}
-      <div className="border-t border-white/10 bg-black/40 backdrop-blur-md px-4 py-4 flex-shrink-0">
-        <div className="max-w-2xl mx-auto flex gap-3">
+      {/* Input area */}
+      <div className="border-t border-white/10 bg-black/30 backdrop-blur-md px-4 py-3 max-w-3xl mx-auto w-full">
+        {inputMode==="speech" && (
+          <p className="text-xs text-green-400 mb-2">💬 Dialogue mode — your text will be spoken as {char.name}</p>
+        )}
+        <div className="flex gap-2">
           <textarea
+            ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={inCombat ? "Describe your attack, dodge, or use an ability..." : "What do you do? (Enter to send)"}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); }}}
+            placeholder={inputMode==="speech" ? `"What ${char.name} says..."` : "What do you do?"}
             rows={2}
-            disabled={loading}
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition resize-none text-sm disabled:opacity-50"
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-purple-500 resize-none"
           />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim()}
-            className="self-end bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 disabled:cursor-not-allowed px-5 py-3 rounded-xl font-semibold transition shadow-lg shadow-purple-500/20 text-sm"
-          >
-            {loading ? "..." : "→"}
+          <button onClick={send} disabled={sending||!input.trim()}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 px-5 py-3 rounded-xl font-bold transition disabled:opacity-50 self-end">
+            →
           </button>
         </div>
+        <p className="text-xs text-gray-700 mt-1.5">Enter to send · Shift+Enter for new line</p>
       </div>
+
+      {/* Inventory panel */}
+      {showInventory && (
+        <div className="fixed inset-y-0 left-0 w-72 bg-gray-900 border-r border-white/10 z-40 flex flex-col shadow-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <span className="font-bold text-sm">🎒 Inventory</span>
+            <button onClick={()=>setShowInventory(false)} className="text-gray-400 hover:text-white">×</button>
+          </div>
+          <div className="p-4 space-y-2 flex-1 overflow-y-auto">
+            <div className="flex justify-between text-sm mb-3">
+              <span className="text-gray-400">Gold</span>
+              <span className="text-yellow-400 font-bold">{gold}g</span>
+            </div>
+            {inventoryItems.length===0 ? (
+              <p className="text-gray-600 text-xs text-center py-4">Your pack is empty.</p>
+            ) : inventoryItems.map((item,i)=>(
+              <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${item.equipped?"border-purple-500/30 bg-purple-900/10":"border-white/10 bg-white/5"}`}>
+                <span className="text-sm">{item.name}</span>
+                {item.equipped && <span className="text-xs text-purple-400 ml-auto">Equipped</span>}
+              </div>
+            ))}
+            <div className="pt-4 border-t border-white/10">
+              <p className="text-xs text-gray-500 mb-2">Stats</p>
+              <div className="grid grid-cols-2 gap-1">
+                {STATS.map(s=>(
+                  <div key={s} className="flex justify-between text-xs bg-white/5 rounded-lg px-2 py-1">
+                    <span className="text-gray-400">{s}</span>
+                    <span className={GRADE_COLOR[STAT_GRADE(stats[s]||50)]||"text-gray-400"}>{stats[s]||50}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Living Codex */}
+      {codexOpen && (
+        <LivingCodex
+          world={world} char={char} npcs={npcs} quests={quests}
+          factionRep={factionRep} keyEvents={keyEvents}
+          onClose={()=>setCodexOpen(false)}
+        />
+      )}
     </div>
   );
 }
