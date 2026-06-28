@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Aurora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
+<style>
+/* ═══════════════════════════════════════════
+   AURORA v4 — DESIGN SYSTEM
+   Dark · Cinematic · Handcrafted · Panels
+═══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:        #0a0805;
+  --ink-2:      #120f0a;
+  --ink-3:      #1a1510;
+  --ink-4:      #221c15;
+  --border:     #2e2519;
+  --border-2:   #3d3020;
+  --gold:       #c9a84c;
+  --gold-dim:   #7a5f28;
+  --gold-glow:  rgba(201,168,76,0.12);
+  --ash:        #8a7a6a;
+  --parchment:  #d4c4a8;
+  --parchment-2:#b8a88a;
+  --red:        #8b2020;
+  --red-bright: #c0392b;
+  --purple:     #4a2060;
+  --purple-2:   #6b3580;
+  --teal:       #1a4a4a;
+  --teal-2:     #2a6a6a;
+  --green:      #1a3a1a;
+  --green-2:    #2d5a2d;
+  --shadow:     rgba(0,0,0,0.6);
+}
+
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--ink);
+  color: var(--parchment);
+  font-family: 'Crimson Text', Georgia, serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+
+/* ── Typography ── */
+.font-title   { font-family: 'Cinzel', serif; letter-spacing: 0.08em; }
+.font-body    { font-family: 'Crimson Text', serif; }
+.font-flavor  { font-family: 'IM Fell English', serif; font-style: italic; }
+
+/* ── Panels ── */
+.panel {
+  background: var(--ink-2);
+  border: 1px solid var(--border);
+  position: relative;
+}
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(201,168,76,0.03) 0%, transparent 60%);
+  pointer-events: none;
+}
+.panel-header {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel-header::before {
+  content: '✦';
+  color: var(--gold-dim);
+  font-size: 0.55rem;
+}
+
+/* ── Buttons ── */
+.btn {
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-2);
+  background: var(--ink-3);
+  color: var(--parchment-2);
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.btn:hover {
+  border-color: var(--gold-dim);
+  color: var(--gold);
+  background: var(--ink-4);
+}
+.btn-gold {
+  border-color: var(--gold-dim);
+  background: linear-gradient(135deg, var(--ink-4) 0%, rgba(201,168,76,0.08) 100%);
+  color: var(--gold);
+}
+.btn-gold:hover {
+  background: linear-gradient(135deg, var(--ink-4) 0%, rgba(201,168,76,0.15) 100%);
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(201,168,76,0.2);
+}
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ash);
+}
+.btn-ghost:hover { color: var(--parchment); background: var(--ink-3); }
+.btn-danger { border-color: var(--red); color: #e57373; background: rgba(139,32,32,0.15); }
+.btn-danger:hover { background: rgba(139,32,32,0.25); }
+
+/* ── Inputs ── */
+input, textarea, select {
+  font-family: 'Crimson Text', serif;
+  font-size: 15px;
+  background: var(--ink-3);
+  border: 1px solid var(--border-2);
+  color: var(--parchment);
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus { border-color: var(--gold-dim); }
+input::placeholder, textarea::placeholder { color: var(--ash); font-style: italic; }
+textarea { resize: none; }
+select option { background: var(--ink-3); }
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-2), transparent);
+  margin: 12px 0;
+}
+.divider-gold {
+  background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+}
+
+/* ── Tags / Badges ── */
+.tag {
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  opacity: 0.8;
+}
+
+/* ── Grade colors ── */
+.grade-e { color: #888; }
+.grade-d { color: #9ca3af; }
+.grade-c { color: #60a5fa; }
+.grade-b { color: #4ade80; }
+.grade-a { color: #f59e0b; }
+
+/* ── Animations ── */
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.7} }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+@keyframes scanline { 0%{transform:translateY(-100%)} 100%{transform:translateY(100vh)} }
+
+.fade-in { animation: fadeIn 0.4s ease forwards; }
+.flicker { animation: flicker 3s infinite; }
+
+/* ── Ornament lines ── */
+.ornament {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--gold-dim);
+  font-size: 0.7rem;
+}
+.ornament::before, .ornament::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-dim));
+}
+.ornament::after { background: linear-gradient(270deg, transparent, var(--gold-dim)); }
+
+/* ── HP Bar ── */
+.hp-bar-track {
+  height: 4px;
+  background: var(--ink-4);
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.hp-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--red), #e74c3c);
+  transition: width 0.5s ease;
+}
+
+/* ── Whisper ── */
+.whisper {
+  border-left: 2px solid var(--teal-2);
+  padding: 6px 12px;
+  margin: 8px 0;
+  font-style: italic;
+  color: #7ecece;
+  font-size: 0.9em;
+  background: rgba(26,74,74,0.15);
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink-3);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  padding: 10px 20px;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+/* ─────────────────────────────────────────
+   SCREENS
+───────────────────────────────────────── */
+
+/* ── HOME ── */
+#screen-home {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 50% 20%, rgba(74,32,96,0.25) 0%, transparent 60%),
+    radial-gradient(ellipse at 20% 80%, rgba(201,168,76,0.06) 0%, transparent 50%),
+    var(--ink);
+  position: relative;
+  overflow: hidden;
+}
+#screen-home::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(255,255,255,0.01) 40px, rgba(255,255,255,0.01) 41px),
+    repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(255,255,255,0.01) 40px, rgba(255,255,255,0.01) 41px);
+  pointer-events: none;
+}
+.home-logo {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  text-shadow: 0 0 60px rgba(201,168,76,0.3), 0 0 120px rgba(201,168,76,0.1);
+  margin-bottom: 4px;
+}
+.home-subtitle {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  color: var(--ash);
+  letter-spacing: 0.15em;
+  margin-bottom: 48px;
+  font-size: 1rem;
+}
+.home-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 280px;
+}
+
+/* ── WORLD SELECT ── */
+#screen-worlds {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+}
+.worlds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.world-card {
+  background: var(--ink-2);
+  border: 1px solid var(--border);
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.world-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--gold-glow), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.world-card:hover { border-color: var(--gold-dim); }
+.world-card:hover::after { opacity: 1; }
+.world-card-name {
+  font-family: 'Cinzel', serif;
+  font-size: 1.1rem;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+.world-card-desc {
+  font-size: 0.85rem;
+  color: var(--ash);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.world-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+/* ── CHARACTER SELECT ── */
+#screen-chars {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+}
+
+/* ── CHARACTER CREATOR ── */
+#screen-create-char {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+  overflow: hidden;
+}
+.creator-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 240px;
+  flex: 1;
+  overflow: hidden;
+}
+.creator-steps {
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  overflow-y: auto;
+}
+.creator-step-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ash);
+  transition: all 0.2s;
+  border-left: 2px solid transparent;
+}
+.creator-step-item:hover { color: var(--parchment); background: var(--ink-3); }
+.creator-step-item.active { color: var(--gold); border-left-color: var(--gold); background: var(--ink-3); }
+.creator-step-item.done { color: var(--green-2); }
+.creator-step-icon { font-size: 1rem; width: 20px; text-align: center; }
+.creator-main { overflow-y: auto; padding: 24px; }
+.creator-preview {
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* ── PLAY SCREEN ── */
+#screen-play {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 200px 1fr 220px;
+  grid-template-rows: 40px 1fr 120px;
+  background: var(--ink);
+  overflow: hidden;
+}
+
+/* Top bar */
+.play-topbar {
+  grid-column: 1 / -1;
+  background: var(--ink-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+}
+.play-topbar-title {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+}
+.play-topbar-sep { color: var(--border-2); }
+.play-topbar-world {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  color: var(--ash);
+}
+
+/* Left panel — character */
+.play-left {
+  grid-row: 2 / 4;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.char-portrait {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--ink-3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--border-2);
+  position: relative;
+  overflow: hidden;
+}
+.char-portrait::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 100%, rgba(201,168,76,0.08), transparent 70%);
+}
+.char-name-block { padding: 12px; border-bottom: 1px solid var(--border); }
+.char-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.85rem;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+}
+.char-class { font-size: 0.75rem; color: var(--ash); margin-top: 2px; }
+.char-hp-block { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.char-hp-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ash);
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+.stats-block { padding: 10px 12px; }
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(46,37,25,0.5);
+}
+.stat-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--ash);
+}
+.stat-value { font-size: 0.85rem; font-weight: 600; color: var(--parchment); }
+.stat-grade { font-size: 0.6rem; font-family: 'Cinzel', serif; margin-left: 4px; }
+.char-meta { padding: 10px 12px; font-size: 0.75rem; color: var(--ash); }
+.char-meta-row { display: flex; justify-content: space-between; padding: 2px 0; }
+
+/* Center — narrative */
+.play-center {
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.narrative-block {
+  animation: fadeIn 0.4s ease;
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+.narrative-narrator {
+  color: var(--parchment);
+}
+.narrative-system {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--gold-dim);
+  text-align: center;
+  padding: 8px 0;
+}
+.narrative-player {
+  color: var(--parchment-2);
+  font-style: italic;
+  padding: 8px 16px;
+  border-left: 2px solid var(--border-2);
+  margin-left: 8px;
+}
+
+/* Input row */
+.play-input-row {
+  border-top: 1px solid var(--border);
+  background: var(--ink-2);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 16px;
+  gap: 8px;
+}
+.play-input {
+  flex: 1;
+  background: var(--ink-3);
+  border: 1px solid var(--border-2);
+  color: var(--parchment);
+  padding: 10px 14px;
+  font-family: 'Crimson Text', serif;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.play-input:focus { border-color: var(--gold-dim); }
+.play-send {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--ink-4);
+  border: 1px solid var(--gold-dim);
+  color: var(--gold);
+  padding: 0 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.play-send:hover { background: rgba(201,168,76,0.1); }
+.play-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Quick actions */
+.play-actions {
+  border-top: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--ink-2);
+}
+
+/* Right panel — inventory/quests */
+.play-right {
+  grid-row: 2 / 4;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.inv-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 0.8rem;
+}
+.inv-item:hover { background: var(--ink-3); }
+.inv-item-name { color: var(--parchment); flex: 1; }
+.inv-item-qty { color: var(--ash); font-size: 0.7rem; }
+.quest-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.quest-title { color: var(--parchment); font-weight: 600; }
+.quest-desc { color: var(--ash); font-size: 0.75rem; margin-top: 2px; }
+
+/* Loading dots */
+.dots { display: flex; gap: 4px; align-items: center; padding: 12px 0; }
+.dot {
+  width: 6px; height: 6px;
+  background: var(--gold-dim);
+  border-radius: 50%;
+  animation: pulse 1.2s infinite;
+}
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── WORLD CREATOR ── */
+#screen-create-world {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+}
+
+/* ── Modal overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.modal {
+  background: var(--ink-2);
+  border: 1px solid var(--border-2);
+  width: min(560px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-title {
+  font-family: 'Cinzel', serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--ash);
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+.modal-close:hover { color: var(--parchment); }
+.modal-body { padding: 20px; }
+
+/* ── Vesper panel ── */
+.vesper-panel {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 300px;
+  max-height: 420px;
+  background: var(--ink-2);
+  border: 1px solid var(--purple-2);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 30px rgba(74,32,96,0.3);
+}
+.vesper-header {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(74,32,96,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.vesper-name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  color: #c084fc;
+}
+.vesper-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.vesper-msg {
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+.vesper-msg.from-vesper { background: rgba(74,32,96,0.25); color: #e9d5ff; border-left: 2px solid var(--purple-2); }
+.vesper-msg.from-user { background: var(--ink-3); color: var(--parchment-2); text-align: right; border-right: 2px solid var(--border-2); }
+.vesper-input-row { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; gap: 6px; }
+.vesper-input { font-size: 0.82rem; padding: 6px 10px; }
+.vesper-send {
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  background: rgba(74,32,96,0.4);
+  border: 1px solid var(--purple-2);
+  color: #c084fc;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.vesper-send:hover { background: rgba(74,32,96,0.6); }
+
+/* ── Top nav bar ── */
+.topnav {
+  background: var(--ink-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.topnav-logo {
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.topnav-sep { color: var(--border-2); font-size: 0.8rem; }
+.topnav-btn {
+  font-family: 'Cinzel', serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ash);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+  padding: 0;
+}
+.topnav-btn:hover { color: var(--parchment); }
+.topnav-spacer { flex: 1; }
+
+/* ── Util ── */
+.hidden { display: none !important; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.p-3 { padding: 12px; }
+.p-4 { padding: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-4 { margin-bottom: 16px; }
+.text-gold { color: var(--gold); }
+.text-ash { color: var(--ash); }
+.text-parchment { color: var(--parchment); }
+.text-sm { font-size: 0.85rem; }
+.text-xs { font-size: 0.75rem; }
+.overflow-y { overflow-y: auto; }
+.flex-1 { flex: 1; }
+.w-full { width: 100%; }
+.text-center { text-align: center; }
+.italic { font-style: italic; }
+.font-cinzel { font-family: 'Cinzel', serif; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════
+     HOME SCREEN
+════════════════════════════════════════ -->
+<div id="screen-home">
+  <div class="home-logo flicker">AURORA</div>
+  <div class="home-subtitle">The God Sandbox</div>
+  <div class="ornament" style="width:280px;margin-bottom:40px;">
+    <span style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.2em;color:var(--ash)">EST. WORLD UNKNOWN</span>
+  </div>
+  <div class="home-menu">
+    <button class="btn btn-gold" onclick="goTo('worlds')">Enter the Worlds</button>
+    <button class="btn" onclick="goTo('create-world')">Forge a New World</button>
+    <button class="btn btn-ghost" onclick="showSettings()">⚙ Settings</button>
+  </div>
+  <div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:0.5rem;letter-spacing:0.3em;color:var(--border-2);text-transform:uppercase;">
+    Aurora v4 · Handcrafted Edition
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     WORLD SELECT SCREEN
+════════════════════════════════════════ -->
+<div id="screen-worlds" class="hidden">
+  <div class="topnav">
+    <div class="topnav-logo">Aurora</div>
+    <span class="topnav-sep">·</span>
+    <span style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;color:var(--ash)">Select World</span>
+    <div class="topnav-spacer"></div>
+    <button class="topnav-btn" onclick="goTo('home')">← Back</button>
+    <button class="btn btn-gold" style="font-size:0.6rem;padding:6px 14px;" onclick="goTo('create-world')">+ Forge World</button>
+  </div>
+  <div class="worlds-grid" id="worlds-grid">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CHARACTER SELECT SCREEN
+════════════════════════════════════════ -->
+<div id="screen-chars" class="hidden">
+  <div class="topnav">
+    <div class="topnav-logo">Aurora</div>
+    <span class="topnav-sep">·</span>
+    <span id="chars-world-name" style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;color:var(--ash)"></span>
+    <div class="topnav-spacer"></div>
+    <button class="topnav-btn" onclick="goTo('worlds')">← Worlds</button>
+    <button class="btn btn-gold" style="font-size:0.6rem;padding:6px 14px;" onclick="startCreateChar()">+ New Character</button>
+  </div>
+  <div id="chars-grid" style="padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;overflow-y:auto;flex:1;">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     CHARACTER CREATOR SCREEN
+════════════════════════════════════════ -->
+<div id="screen-create-char" class="hidden">
+  <div class="topnav">
+    <div class="topnav-logo">Aurora</div>
+    <span class="topnav-sep">·</span>
+    <span style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;color:var(--ash)">Character Creator</span>
+    <div class="topnav-spacer"></div>
+    <button class="topnav-btn" onclick="goTo('chars')">← Cancel</button>
+    <button class="btn btn-gold" style="font-size:0.6rem;padding:6px 14px;" onclick="saveCharacter()">Save Character</button>
+  </div>
+  <div class="creator-layout" style="flex:1;overflow:hidden;">
+    <!-- Steps sidebar -->
+    <div class="creator-steps">
+      <div style="padding:12px 16px 6px;font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--border-2);">Steps</div>
+      <div id="creator-step-list"></div>
+    </div>
+    <!-- Main content -->
+    <div class="creator-main" id="creator-main">
+      <!-- populated by JS -->
+    </div>
+    <!-- Preview sidebar -->
+    <div class="creator-preview">
+      <div class="panel-header">Character</div>
+      <div id="creator-preview-content" style="padding:12px;">
+        <!-- live preview -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     WORLD CREATOR SCREEN
+════════════════════════════════════════ -->
+<div id="screen-create-world" class="hidden">
+  <div class="topnav">
+    <div class="topnav-logo">Aurora</div>
+    <span class="topnav-sep">·</span>
+    <span style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;color:var(--ash)">World Forge</span>
+    <div class="topnav-spacer"></div>
+    <button class="topnav-btn" onclick="goTo('home')">← Back</button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 320px;flex:1;overflow:hidden;height:calc(100vh - 44px);">
+    <div style="overflow-y:auto;padding:24px;" id="world-creator-main">
+      <!-- populated by JS -->
+    </div>
+    <div style="border-left:1px solid var(--border);overflow-y:auto;" id="world-creator-side">
+      <!-- Vesper / preview -->
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PLAY SCREEN
+════════════════════════════════════════ -->
+<div id="screen-play" class="hidden">
+  <!-- Top bar -->
+  <div class="play-topbar">
+    <span class="play-topbar-title">Aurora</span>
+    <span class="topnav-sep">·</span>
+    <span class="play-topbar-world" id="play-world-label"></span>
+    <div style="flex:1;"></div>
+    <button class="btn btn-ghost" style="font-size:0.6rem;padding:4px 10px;" onclick="toggleJournal()">📜 Journal</button>
+    <button class="btn btn-ghost" style="font-size:0.6rem;padding:4px 10px;" onclick="openShop()">🏪 Shop</button>
+    <button class="btn btn-ghost" style="font-size:0.6rem;padding:4px 10px;" onclick="confirmLeave()">← Leave</button>
+  </div>
+
+  <!-- Left: character panel -->
+  <div class="play-left panel">
+    <div class="char-portrait" id="play-char-portrait">⚔</div>
+    <div class="char-name-block">
+      <div class="char-name" id="play-char-name">—</div>
+      <div class="char-class" id="play-char-class">—</div>
+    </div>
+    <div class="char-hp-block">
+      <div class="char-hp-label">
+        <span>Vitality</span>
+        <span id="play-hp-text">100 / 100</span>
+      </div>
+      <div class="hp-bar-track">
+        <div class="hp-bar-fill" id="play-hp-bar" style="width:100%"></div>
+      </div>
+    </div>
+    <div class="char-meta" id="play-char-meta"></div>
+    <div class="divider" style="margin:0;"></div>
+    <div class="stats-block" id="play-stats-block"></div>
+  </div>
+
+  <!-- Center: narrative -->
+  <div class="play-center" id="play-narrative">
+    <div class="narrative-system">— The story begins —</div>
+  </div>
+
+  <!-- Input row -->
+  <div class="play-input-row">
+    <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+      <div id="play-quick-actions" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      <div style="display:flex;gap:8px;">
+        <input class="play-input" id="play-input" placeholder="What do you do..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAction();}"/>
+        <button class="play-send" id="play-send-btn" onclick="sendAction()">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: inventory + quests -->
+  <div class="play-right">
+    <div class="panel-header">Inventory</div>
+    <div id="play-inventory" style="flex:1;">
+      <div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">Empty...</div>
+    </div>
+    <div class="divider" style="margin:0;"></div>
+    <div class="panel-header">Quests</div>
+    <div id="play-quests">
+      <div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">No active quests.</div>
+    </div>
+    <div class="divider" style="margin:0;"></div>
+    <div class="panel-header">NPCs</div>
+    <div id="play-npcs">
+      <div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">No known contacts.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     MODALS
+════════════════════════════════════════ -->
+<!-- Settings modal -->
+<div id="modal-settings" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Settings</span>
+      <button class="modal-close" onclick="closeModal('settings')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;color:var(--ash);margin-bottom:6px;text-transform:uppercase;">AI API Key</div>
+        <input type="password" id="settings-apikey" placeholder="sk-..." style="font-family:monospace;font-size:0.85rem;"/>
+        <div style="font-size:0.75rem;color:var(--ash);margin-top:4px;font-style:italic;">Stored locally in your browser.</div>
+      </div>
+      <button class="btn btn-gold w-full" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Journal modal -->
+<div id="modal-journal" class="modal-overlay hidden">
+  <div class="modal" style="width:min(700px,90vw);">
+    <div class="modal-header">
+      <span class="modal-title">Campaign Journal</span>
+      <button class="modal-close" onclick="closeModal('journal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="mb-3">
+        <div style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:8px;">Summary</div>
+        <div id="journal-summary" style="font-style:italic;color:var(--parchment-2);line-height:1.7;font-size:0.9rem;"></div>
+      </div>
+      <div class="divider"></div>
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:8px;">Key Events</div>
+        <div id="journal-events" style="font-size:0.85rem;color:var(--ash);display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ════════════════════════════════════════
+     VESPER FLOAT PANEL
+════════════════════════════════════════ -->
+<div id="vesper-panel" class="vesper-panel hidden">
+  <div class="vesper-header">
+    <span class="vesper-name">✦ Vesper</span>
+    <button class="modal-close" onclick="closeVesper()">×</button>
+  </div>
+  <div class="vesper-messages" id="vesper-messages"></div>
+  <div class="vesper-input-row">
+    <input class="vesper-input flex-1" id="vesper-input" placeholder="Ask Vesper..." onkeydown="if(event.key==='Enter')sendVesper();"/>
+    <button class="vesper-send" onclick="sendVesper()">→</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     JAVASCRIPT ENGINE
+════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ── CONFIG ──────────────────────────────
+const AI_PROXY_URL = 'https://6a003b64ed572e57af35b196.baserow.io/api/functions/aiProxy';
+const LS = {
+  KEY:    'aurora_v4_apikey',
+  WORLDS: 'aurora_v4_worlds',
+  CHARS:  'aurora_v4_chars',
+  STATE:  'aurora_v4_gamestate',
+};
+
+// ── GLOBAL STATE ─────────────────────────
+let G = {
+  screen: 'home',
+  apiKey: localStorage.getItem(LS.KEY) || '',
+  worlds: [],
+  chars: [],
+  activeWorld: null,
+  activeChar: null,
+  // Play state
+  messages: [],
+  campaignSummary: '',
+  keyEvents: [],
+  npcs: [],
+  quests: [],
+  inventory: [],
+  gold: 10,
+  charHP: 100,
+  charMaxHP: 100,
+  turnCount: 0,
+  loading: false,
+  // Vesper
+  vesperOpen: false,
+  vesperMessages: [],
+  // Creator
+  creatorStep: 0,
+  draftChar: {},
+  draftWorld: {},
+};
+
+// ── WORLD / CHAR STORAGE ─────────────────
+function loadData() {
+  try { G.worlds = JSON.parse(localStorage.getItem(LS.WORLDS) || '[]'); } catch(e) { G.worlds = []; }
+  try { G.chars  = JSON.parse(localStorage.getItem(LS.CHARS)  || '[]'); } catch(e) { G.chars = []; }
+  seedDefaultWorlds();
+}
+
+function saveWorlds() { localStorage.setItem(LS.WORLDS, JSON.stringify(G.worlds)); }
+function saveChars()  { localStorage.setItem(LS.CHARS,  JSON.stringify(G.chars));  }
+
+function seedDefaultWorlds() {
+  // Aurora canon world
+  if (!G.worlds.find(w => w.id === 'aurora-canon-001')) {
+    G.worlds.push({
+      id: 'aurora-canon-001', world_type: 'Canon',
+      name: 'Aurora', setting: 'Dark Fantasy / Divine Descent',
+      magic_level: 'High', technology_level: 'Medieval',
+      danger_level: 'High', genre_tone: 'Dark Fantasy',
+      description: 'A vast planetary colossus that rejected the gods who tried to settle it — forcing them to descend as mortal vessels instead.',
+      lore: 'The gods were once a mortal civilization that ascended collectively. Aurora rejected their true forms on contact. To descend personally, a god must tear a piece of their soul free and compress it into a mortal vessel of their own design.',
+      power_system_type: 'Soul Fragment Vessels',
+      rank_names: 'Vessel, Awakened, Ascended, Sovereign, Divine',
+      factions: 'The Descended · The Demonkind · The Superior Courts · The Lesser Kingdoms · The Asurians',
+      landmarks: 'The Threshold · The Stillroom · The Demonspine · The Ascending Shelf · The Hollow Continent',
+      races: 'Human · Elven · Dwarven · Divine Vessel · Superior Being · Asurian',
+      status: 'Active',
+    });
+  }
+  // Shadow Slave world
+  if (!G.worlds.find(w => w.id === 'shadow-slave-001')) {
+    G.worlds.push({
+      id: 'shadow-slave-001', world_type: 'Known',
+      name: 'Shadow Slave — The Dream Realm',
+      setting: 'Contemporary Dark Fantasy / Nightmare Horror',
+      magic_level: 'High', technology_level: 'Modern',
+      danger_level: 'Extreme', genre_tone: 'Dark Progression Fantasy',
+      description: 'Contemporary dystopian Earth overlaid with the Dream Realm — a ruined magical dimension of ancient civilizations, fallen gods, and Nightmare Creatures. Survival is earned. Power is paid for in blood.',
+      lore: 'RANKS: Dormant → Awakened → Ascended → Transcendent → Sovereign → Spirit → Divine. Nightmare Creatures: Beast → Monster → Demon → Devil → Tyrant → Terror → Titan. Sunny\'s Aspect: Shadow (Shadow Step, Shadow Absorption, Legion of Shadows). Mordret: soul-parasite, travels via reflections. Nephis: Saint of Radiance, destined leader.',
+      power_system_type: 'Aspects — supernatural gifts awakened through surviving a Nightmare Trial',
+      rank_names: 'Dormant, Awakened, Ascended, Transcendent, Sovereign, Spirit, Divine',
+      factions: 'Mongrel cohort (Sunny, Nephis, Cassie, Kai, Effie) · House of Night · Awakened factions · Nightmare Creatures',
+      landmarks: 'Forgotten Shore|Crimson Spire|Chained Isles|Night Garden|Antarctica Dream Realm|Godgrave',
+      races: 'Humans (unawakened)|Awakened (Aspect users)|Nightmare Creatures|Shadows (Sunny\'s legion)|Reflections (Mordret\'s soul fragments)',
+      status: 'Active',
+    });
+  }
+  saveWorlds();
+}
+
+// ── NAVIGATION ───────────────────────────
+function goTo(screen) {
+  document.querySelectorAll('[id^="screen-"]').forEach(el => el.classList.add('hidden'));
+  const el = document.getElementById('screen-' + screen);
+  if (el) {
+    el.classList.remove('hidden');
+    G.screen = screen;
+    onScreenEnter(screen);
+  }
+}
+
+function onScreenEnter(screen) {
+  if (screen === 'worlds')       renderWorldsGrid();
+  if (screen === 'chars')        renderCharsGrid();
+  if (screen === 'play')         initPlayScreen();
+  if (screen === 'create-char')  initCharCreator();
+  if (screen === 'create-world') initWorldCreator();
+}
+
+// ── WORLDS GRID ──────────────────────────
+function renderWorldsGrid() {
+  const grid = document.getElementById('worlds-grid');
+  if (!grid) return;
+  if (G.worlds.length === 0) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--ash);font-style:italic;">No worlds yet. Forge one.</div>';
+    return;
+  }
+  grid.innerHTML = G.worlds.map((w, i) => `
+    <div class="world-card fade-in" onclick="selectWorld('${w.id}')" style="animation-delay:${i*0.05}s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="world-card-name">${w.name}</div>
+        <span class="tag" style="color:var(--gold-dim);font-size:0.55rem;">${w.world_type || 'Custom'}</span>
+      </div>
+      <div class="world-card-desc">${w.description || w.lore || 'No description.'}</div>
+      <div class="world-card-tags">
+        <span class="tag" style="color:var(--ash);font-size:0.55rem;">${w.magic_level || '—'} Magic</span>
+        <span class="tag" style="color:var(--ash);font-size:0.55rem;">${w.danger_level || '—'} Danger</span>
+        ${w.setting ? `<span class="tag" style="color:var(--ash);font-size:0.55rem;">${w.setting}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectWorld(worldId) {
+  G.activeWorld = G.worlds.find(w => w.id === worldId);
+  if (!G.activeWorld) return;
+  document.getElementById('chars-world-name').textContent = G.activeWorld.name;
+  goTo('chars');
+}
+
+// ── CHARS GRID ───────────────────────────
+function renderCharsGrid() {
+  const grid = document.getElementById('chars-grid');
+  if (!grid) return;
+  const worldChars = G.chars.filter(c => c.world_id === G.activeWorld?.id);
+  if (worldChars.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--ash);">
+        <div style="font-family:'IM Fell English',serif;font-style:italic;font-size:1.1rem;margin-bottom:16px;">No characters in this world.</div>
+        <button class="btn btn-gold" onclick="startCreateChar()">Create Your Character</button>
+      </div>`;
+    return;
+  }
+  grid.innerHTML = worldChars.map((c, i) => `
+    <div class="world-card fade-in" onclick="selectChar('${c.id}')" style="animation-delay:${i*0.05}s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div class="world-card-name">${c.name || 'Unnamed'}</div>
+        <span class="tag" style="color:var(--ash);font-size:0.55rem;">Lv.${c.level || 1}</span>
+      </div>
+      <div style="font-size:0.8rem;color:var(--gold-dim);font-family:'Cinzel',serif;margin-bottom:6px;">${c.class || '—'}</div>
+      <div class="world-card-desc">${c.backstory || 'No backstory yet.'}</div>
+      <div class="world-card-tags">
+        <span class="tag" style="color:var(--ash);font-size:0.55rem;">${c.race || 'Unknown Race'}</span>
+        <span class="tag" style="color:var(--ash);font-size:0.55rem;">${c.alignment || 'Neutral'}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectChar(charId) {
+  G.activeChar = G.chars.find(c => c.id === charId);
+  if (!G.activeChar) return;
+  loadGameState();
+  goTo('play');
+}
+
+function startCreateChar() {
+  G.draftChar = {
+    id: 'char-' + Date.now(),
+    world_id: G.activeWorld?.id || '',
+    name: '', class: '', race: '', backstory: '',
+    alignment: 'True Neutral', level: 1, experience: 0,
+    health: 100, survival_mode: 'standard', pov: 'second',
+    stats: { STR:50, DEX:50, CON:50, INT:50, WIS:50, CHA:50, SMY:50 },
+    abilities: '', inventory: 'Torch, basic supplies',
+    inventoryItems: [],
+    gold: 10,
+  };
+  G.creatorStep = 0;
+  goTo('create-char');
+}
+
+// ── CHARACTER CREATOR ────────────────────
+const CREATOR_STEPS = [
+  { id:'identity', label:'Identity',    icon:'🧬', desc:'Name, class, and who you are.' },
+  { id:'race',     label:'Race',        icon:'🌿', desc:'Your lineage and traits.' },
+  { id:'stats',    label:'Attributes',  icon:'📊', desc:'Distribute your starting stats.' },
+  { id:'playstyle',label:'Play Style',  icon:'🎮', desc:'Survival mode and POV.' },
+  { id:'backstory',label:'Backstory',   icon:'📖', desc:'Your history and alignment.' },
+  { id:'review',   label:'Review',      icon:'✦',  desc:'Final check before entering.' },
+];
+
+const STATS_LIST = ['STR','DEX','CON','INT','WIS','CHA','SMY'];
+const STAT_NAMES = { STR:'Strength', DEX:'Dexterity', CON:'Constitution', INT:'Intelligence', WIS:'Wisdom', CHA:'Charisma', SMY:'Soulmastery' };
+
+function statGrade(v) {
+  if (v >= 151) return { g:'A', cls:'grade-a' };
+  if (v >= 111) return { g:'B', cls:'grade-b' };
+  if (v >= 71)  return { g:'C', cls:'grade-c' };
+  if (v >= 41)  return { g:'D', cls:'grade-d' };
+  return { g:'E', cls:'grade-e' };
+}
+
+function initCharCreator() {
+  renderCreatorSteps();
+  renderCreatorMain();
+  renderCreatorPreview();
+}
+
+function renderCreatorSteps() {
+  const list = document.getElementById('creator-step-list');
+  if (!list) return;
+  list.innerHTML = CREATOR_STEPS.map((s, i) => `
+    <div class="creator-step-item ${i === G.creatorStep ? 'active' : i < G.creatorStep ? 'done' : ''}"
+         onclick="gotoCreatorStep(${i})">
+      <span class="creator-step-icon">${i < G.creatorStep ? '✓' : s.icon}</span>
+      <span>${s.label}</span>
+    </div>
+  `).join('');
+}
+
+function gotoCreatorStep(i) {
+  G.creatorStep = i;
+  renderCreatorSteps();
+  renderCreatorMain();
+}
+
+function renderCreatorMain() {
+  const main = document.getElementById('creator-main');
+  if (!main) return;
+  const step = CREATOR_STEPS[G.creatorStep];
+  const w = G.activeWorld;
+  const c = G.draftChar;
+
+  let html = `<div class="fade-in">
+    <div style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:4px;">${step.icon} ${step.label}</div>
+    <div style="font-style:italic;color:var(--ash);font-size:0.85rem;margin-bottom:24px;">${step.desc}</div>`;
+
+  if (step.id === 'identity') {
+    // Get world races for class suggestions
+    const worldRaces = parseRaces(w?.races || '');
+    html += `
+      <div class="mb-4">
+        <label class="field-label">Character Name</label>
+        <input value="${c.name||''}" oninput="G.draftChar.name=this.value;renderCreatorPreview();" placeholder="Enter a name..." style="margin-top:6px;"/>
+      </div>
+      <div class="mb-4">
+        <label class="field-label">Class / Role</label>
+        <input value="${c.class||''}" oninput="G.draftChar.class=this.value;renderCreatorPreview();" placeholder="Warrior, Mage, Shadow..." style="margin-top:6px;"/>
+        ${w ? `<div style="font-size:0.75rem;color:var(--ash);margin-top:6px;font-style:italic;">World: ${w.name} · Power system: ${w.power_system_type || 'Unknown'}</div>` : ''}
+      </div>
+    `;
+  } else if (step.id === 'race') {
+    const races = parseRaces(w?.races || '');
+    html += `<div style="display:flex;flex-direction:column;gap:8px;">`;
+    if (races.length > 0) {
+      races.forEach(r => {
+        const selected = c.race === r.name;
+        html += `<button onclick="G.draftChar.race='${r.name}';renderCreatorSteps();renderCreatorMain();renderCreatorPreview();"
+          style="text-align:left;padding:14px;border:1px solid ${selected ? 'var(--gold-dim)' : 'var(--border)'};background:${selected ? 'rgba(201,168,76,0.06)' : 'var(--ink-3)'};cursor:pointer;transition:all 0.2s;color:var(--parchment);">
+          <div style="font-family:'Cinzel',serif;font-size:0.8rem;color:${selected ? 'var(--gold)' : 'var(--parchment)'};">${r.name} ${selected ? '✓' : ''}</div>
+          ${r.desc ? `<div style="font-size:0.78rem;color:var(--ash);margin-top:4px;">${r.desc}</div>` : ''}
+        </button>`;
+      });
+    }
+    html += `
+      <div style="margin-top:8px;">
+        <input value="${c.race||''}" oninput="G.draftChar.race=this.value;renderCreatorPreview();" placeholder="Or enter a custom race..."/>
+      </div>
+    </div>`;
+  } else if (step.id === 'stats') {
+    const total = STATS_LIST.reduce((sum, s) => sum + (c.stats[s] || 50), 0);
+    const budget = 350;
+    const remaining = budget - total;
+    html += `
+      <div style="font-size:0.8rem;color:${remaining < 0 ? 'var(--red-bright)' : 'var(--ash)'};margin-bottom:16px;font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.1em;">
+        Points remaining: <strong style="color:${remaining < 0 ? 'var(--red-bright)' : 'var(--gold)'};">${remaining}</strong> / ${budget}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">`;
+    STATS_LIST.forEach(stat => {
+      const val = c.stats[stat] || 50;
+      const gr = statGrade(val);
+      html += `
+        <div style="display:grid;grid-template-columns:120px 1fr 60px 30px;align-items:center;gap:10px;">
+          <div>
+            <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.1em;color:var(--ash);">${stat}</div>
+            <div style="font-size:0.7rem;color:var(--border-2);">${STAT_NAMES[stat]}</div>
+          </div>
+          <input type="range" min="10" max="200" value="${val}"
+            oninput="G.draftChar.stats['${stat}']=parseInt(this.value);renderCreatorMain();renderCreatorPreview();"
+            style="accent-color:var(--gold-dim);"/>
+          <input type="number" min="10" max="200" value="${val}"
+            oninput="G.draftChar.stats['${stat}']=Math.max(10,Math.min(200,parseInt(this.value)||50));renderCreatorMain();renderCreatorPreview();"
+            style="width:100%;text-align:center;padding:4px 6px;font-size:0.9rem;"/>
+          <div class="${gr.cls}" style="font-family:'Cinzel',serif;font-size:0.75rem;text-align:center;">${gr.g}</div>
+        </div>`;
+    });
+    html += '</div>';
+  } else if (step.id === 'playstyle') {
+    const modes = [
+      { id:'story',    label:'Story Mode',  icon:'📖', desc:'Death suspended. Pure narrative.' },
+      { id:'standard', label:'Standard',    icon:'⚔️', desc:'Death matters. Penalties on loss.' },
+      { id:'survival', label:'Survival',    icon:'🌲', desc:'Hunger, thirst, shelter tracked.' },
+      { id:'ironman',  label:'Ironman',     icon:'🩸', desc:'Three deaths. Then it\'s over.' },
+      { id:'nightmare',label:'Nightmare',   icon:'💀', desc:'One death. No forgiveness.' },
+    ];
+    const povs = [
+      { id:'first',  label:'First Person',  desc:'I raise my blade...' },
+      { id:'second', label:'Second Person', desc:'You step forward...' },
+      { id:'third',  label:'Third Person',  desc:'[Name] moves through shadows...' },
+    ];
+    html += `
+      <div style="margin-bottom:24px;">
+        <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:10px;">Survival Mode</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${modes.map(m => `
+            <button onclick="G.draftChar.survival_mode='${m.id}';renderCreatorMain();renderCreatorPreview();"
+              style="text-align:left;padding:10px 14px;border:1px solid ${c.survival_mode===m.id ? 'var(--gold-dim)' : 'var(--border)'};background:${c.survival_mode===m.id ? 'rgba(201,168,76,0.06)' : 'var(--ink-3)'};cursor:pointer;color:var(--parchment);display:flex;align-items:center;gap:10px;transition:all 0.2s;">
+              <span>${m.icon}</span>
+              <span style="font-family:'Cinzel',serif;font-size:0.7rem;color:${c.survival_mode===m.id ? 'var(--gold)' : 'var(--parchment)'};">${m.label}</span>
+              <span style="font-size:0.75rem;color:var(--ash);">— ${m.desc}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:10px;">Narrative POV</div>
+        <div style="display:flex;gap:8px;">
+          ${povs.map(p => `
+            <button onclick="G.draftChar.pov='${p.id}';renderCreatorMain();renderCreatorPreview();"
+              style="flex:1;padding:10px;border:1px solid ${c.pov===p.id ? 'var(--gold-dim)' : 'var(--border)'};background:${c.pov===p.id ? 'rgba(201,168,76,0.06)' : 'var(--ink-3)'};cursor:pointer;color:var(--parchment);text-align:center;transition:all 0.2s;">
+              <div style="font-family:'Cinzel',serif;font-size:0.65rem;color:${c.pov===p.id ? 'var(--gold)' : 'var(--parchment)'};">${p.label}</div>
+              <div style="font-size:0.7rem;color:var(--ash);font-style:italic;margin-top:4px;">${p.desc}</div>
+            </button>`).join('')}
+        </div>
+      </div>`;
+  } else if (step.id === 'backstory') {
+    const alignments = ['Lawful Good','Neutral Good','Chaotic Good','Lawful Neutral','True Neutral','Chaotic Neutral','Lawful Evil','Neutral Evil','Chaotic Evil'];
+    html += `
+      <div class="mb-4">
+        <label class="field-label">Backstory</label>
+        <textarea rows="6" style="margin-top:6px;" oninput="G.draftChar.backstory=this.value;renderCreatorPreview();"
+          placeholder="Who are you? Where did you come from? What drives you?">${c.backstory||''}</textarea>
+      </div>
+      <div class="mb-4">
+        <label class="field-label">Alignment</label>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px;">
+          ${alignments.map(a => `
+            <button onclick="G.draftChar.alignment='${a}';renderCreatorMain();renderCreatorPreview();"
+              style="padding:8px 4px;border:1px solid ${c.alignment===a ? 'var(--gold-dim)' : 'var(--border)'};background:${c.alignment===a ? 'rgba(201,168,76,0.06)' : 'var(--ink-3)'};cursor:pointer;font-size:0.7rem;font-family:'Cinzel',serif;color:${c.alignment===a ? 'var(--gold)' : 'var(--ash)'};transition:all 0.2s;letter-spacing:0.05em;">
+              ${a}
+            </button>`).join('')}
+        </div>
+      </div>`;
+  } else if (step.id === 'review') {
+    html += `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="panel" style="padding:16px;">
+          <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:12px;">Identity</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.85rem;">
+            <div><span style="color:var(--ash);">Name: </span>${c.name || '—'}</div>
+            <div><span style="color:var(--ash);">Class: </span>${c.class || '—'}</div>
+            <div><span style="color:var(--ash);">Race: </span>${c.race || '—'}</div>
+            <div><span style="color:var(--ash);">Alignment: </span>${c.alignment || '—'}</div>
+            <div><span style="color:var(--ash);">Survival: </span>${c.survival_mode || '—'}</div>
+            <div><span style="color:var(--ash);">POV: </span>${c.pov || '—'}</div>
+          </div>
+        </div>
+        <div class="panel" style="padding:16px;">
+          <div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:12px;">Attributes</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">
+            ${STATS_LIST.map(s => { const v = c.stats[s]||50; const gr = statGrade(v); return `<div style="text-align:center;padding:8px;background:var(--ink-3);border:1px solid var(--border);"><div style="font-family:'Cinzel',serif;font-size:0.6rem;color:var(--ash);">${s}</div><div style="font-size:1.1rem;">${v}</div><div class="${gr.cls}" style="font-family:'Cinzel',serif;font-size:0.65rem;">${gr.g}</div></div>`; }).join('')}
+          </div>
+        </div>
+        ${c.backstory ? `<div class="panel" style="padding:16px;"><div style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:8px;">Backstory</div><div style="font-size:0.85rem;line-height:1.7;color:var(--parchment-2);font-style:italic;">${c.backstory}</div></div>` : ''}
+        <button class="btn btn-gold w-full" onclick="saveCharacter()" style="margin-top:8px;">Enter the World →</button>
+      </div>`;
+  }
+
+  // Nav buttons
+  html += `<div style="display:flex;gap:8px;margin-top:32px;">
+    ${G.creatorStep > 0 ? `<button class="btn" onclick="gotoCreatorStep(${G.creatorStep - 1})">← Back</button>` : ''}
+    ${G.creatorStep < CREATOR_STEPS.length - 1 ? `<button class="btn btn-gold" onclick="gotoCreatorStep(${G.creatorStep + 1})">Next →</button>` : ''}
+  </div>`;
+
+  html += '</div>';
+
+  // Field label style injection
+  if (!document.getElementById('field-label-style')) {
+    const s = document.createElement('style');
+    s.id = 'field-label-style';
+    s.textContent = '.field-label{font-family:"Cinzel",serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);}';
+    document.head.appendChild(s);
+  }
+
+  main.innerHTML = html;
+}
+
+function renderCreatorPreview() {
+  const el = document.getElementById('creator-preview-content');
+  if (!el) return;
+  const c = G.draftChar;
+  el.innerHTML = `
+    <div style="font-family:'Cinzel',serif;font-size:1rem;color:var(--gold);margin-bottom:4px;">${c.name || '—'}</div>
+    <div style="font-size:0.75rem;color:var(--ash);margin-bottom:12px;">${c.class || '—'} · ${c.race || 'Unknown Race'}</div>
+    <div class="divider"></div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">
+      ${STATS_LIST.map(s => { const v = c.stats[s]||50; const gr = statGrade(v); return `
+        <div class="stat-row">
+          <span class="stat-label">${s}</span>
+          <span><span class="stat-value">${v}</span><span class="stat-grade ${gr.cls}">${gr.g}</span></span>
+        </div>`; }).join('')}
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:0.75rem;color:var(--ash);margin-top:8px;">
+      <div>${c.alignment || 'No alignment'}</div>
+      <div>${c.survival_mode || 'standard'} mode</div>
+      <div>POV: ${c.pov || 'second'} person</div>
+    </div>
+  `;
+}
+
+function parseRaces(racesStr) {
+  if (!racesStr) return [];
+  // Try JSON first
+  try {
+    const parsed = JSON.parse(racesStr);
+    if (Array.isArray(parsed)) return parsed.filter(r => r.playable !== false);
+  } catch(e) {}
+  // Plain text — pipe or newline separated
+  return racesStr.split(/[|\n]/).map(l => l.trim()).filter(Boolean).map(l => ({
+    name: l.split('(')[0].trim(),
+    desc: l.includes('(') ? l.split('(')[1]?.replace(')','').trim() : '',
+    playable: true,
+    passives: [],
+  }));
+}
+
+function saveCharacter() {
+  const c = G.draftChar;
+  if (!c.name?.trim()) { showToast('Enter a name first.'); return; }
+  if (!c.class?.trim()) { showToast('Enter a class first.'); return; }
+  // Remove existing with same id
+  G.chars = G.chars.filter(ch => ch.id !== c.id);
+  G.chars.push(c);
+  saveChars();
+  G.activeChar = c;
+  loadGameState();
+  goTo('play');
+}
+
+// ── WORLD CREATOR ────────────────────────
+function initWorldCreator() {
+  const main = document.getElementById('world-creator-main');
+  const side = document.getElementById('world-creator-side');
+  if (!main || !side) return;
+
+  G.draftWorld = {
+    id: 'world-' + Date.now(),
+    world_type: 'Custom',
+    name: '', setting: '', magic_level: 'Medium',
+    technology_level: 'Medieval', danger_level: 'Medium',
+    description: '', lore: '', factions: '',
+    landmarks: '', races: '', power_system_type: '',
+    rank_names: '', status: 'Active',
+  };
+
+  main.innerHTML = `
+    <div class="fade-in">
+      <div style="font-family:'Cinzel',serif;font-size:1.2rem;color:var(--gold);margin-bottom:4px;">World Forge</div>
+      <div style="font-style:italic;color:var(--ash);margin-bottom:24px;">Define the laws of your world.</div>
+
+      <div class="mb-4">
+        <label class="field-label" style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">World Name</label>
+        <input oninput="G.draftWorld.name=this.value;" placeholder="Name your world..."/>
+      </div>
+      <div class="mb-4">
+        <label class="field-label" style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Setting / Genre</label>
+        <input oninput="G.draftWorld.setting=this.value;" placeholder="Dark fantasy, sci-fi, mythpunk..."/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <label style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Magic Level</label>
+          <select onchange="G.draftWorld.magic_level=this.value;">
+            ${['None','Low','Medium','High','Extreme'].map(v => `<option ${v==='Medium'?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Technology</label>
+          <select onchange="G.draftWorld.technology_level=this.value;">
+            ${['Stone Age','Ancient','Medieval','Renaissance','Industrial','Modern','Futuristic'].map(v => `<option ${v==='Medieval'?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Danger Level</label>
+          <select onchange="G.draftWorld.danger_level=this.value;">
+            ${['Safe','Low','Medium','High','Extreme','Lethal'].map(v => `<option ${v==='Medium'?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Description</label>
+        <textarea rows="4" oninput="G.draftWorld.description=this.value;" placeholder="What is this world? What makes it unique?"></textarea>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Lore & History</label>
+        <textarea rows="5" oninput="G.draftWorld.lore=this.value;" placeholder="Origins, ancient history, key events..."></textarea>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Power System</label>
+        <input oninput="G.draftWorld.power_system_type=this.value;" placeholder="Aspects, ki, magic circuits, soul cores..."/>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Rank Names</label>
+        <input oninput="G.draftWorld.rank_names=this.value;" placeholder="Dormant, Awakened, Ascended..."/>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Races / Species</label>
+        <textarea rows="3" oninput="G.draftWorld.races=this.value;" placeholder="Humans | Elves | Nightmare Creatures..."></textarea>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Factions</label>
+        <textarea rows="3" oninput="G.draftWorld.factions=this.value;" placeholder="The Empire · The Resistance · The Old Gods..."></textarea>
+      </div>
+      <div class="mb-4">
+        <label style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--ash);display:block;margin-bottom:6px;">Landmarks</label>
+        <textarea rows="3" oninput="G.draftWorld.landmarks=this.value;" placeholder="The Shattered Gate | The Sunken City..."></textarea>
+      </div>
+      <button class="btn btn-gold w-full" onclick="saveWorld()" style="margin-top:8px;">Seal the World →</button>
+    </div>`;
+
+  side.innerHTML = `
+    <div class="panel-header">Vesper</div>
+    <div style="padding:14px;">
+      <div style="font-size:0.82rem;color:var(--ash);font-style:italic;line-height:1.6;margin-bottom:12px;">
+        Building something? I can help flesh out lore, suggest power systems, generate factions — just ask.
+      </div>
+      <button class="btn btn-gold w-full" onclick="openVesper('world creator')">Open Vesper →</button>
+    </div>`;
+}
+
+function saveWorld() {
+  const w = G.draftWorld;
+  if (!w.name?.trim()) { showToast('Name your world first.'); return; }
+  G.worlds = G.worlds.filter(x => x.id !== w.id);
+  G.worlds.push(w);
+  saveWorlds();
+  showToast('World sealed — ' + w.name);
+  setTimeout(() => goTo('worlds'), 800);
+}
+
+// ── PLAY SCREEN ──────────────────────────
+function initPlayScreen() {
+  const w = G.activeWorld, c = G.activeChar;
+  if (!w || !c) { goTo('home'); return; }
+
+  // Top bar
+  document.getElementById('play-world-label').textContent = w.name + ' · ' + c.name;
+
+  // Char panel
+  document.getElementById('play-char-name').textContent = c.name;
+  document.getElementById('play-char-class').textContent = (c.class || '—') + ' · ' + (c.race || 'Unknown');
+  updateHPBar();
+  renderStatPanel();
+  renderCharMeta();
+
+  // Right panels
+  renderInventory();
+  renderQuests();
+  renderNPCs();
+
+  // Narrative
+  const narr = document.getElementById('play-narrative');
+  if (G.messages.length === 0) {
+    // Opening scene
+    narr.innerHTML = '<div class="narrative-system">— The story begins —</div>';
+    generateOpeningScene();
+  } else {
+    renderMessages();
+  }
+
+  renderQuickActions();
+}
+
+function updateHPBar() {
+  const c = G.activeChar;
+  const hp = G.charHP ?? c.health ?? 100;
+  const max = G.charMaxHP ?? c.health ?? 100;
+  const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+  const bar = document.getElementById('play-hp-bar');
+  const txt = document.getElementById('play-hp-text');
+  if (bar) bar.style.width = pct + '%';
+  if (txt) txt.textContent = hp + ' / ' + max;
+}
+
+function renderStatPanel() {
+  const el = document.getElementById('play-stats-block');
+  if (!el) return;
+  const c = G.activeChar;
+  const stats = c.stats || {};
+  el.innerHTML = '<div class="panel-header" style="margin:-12px -12px 10px;padding:8px 12px;">Attributes</div>' +
+    STATS_LIST.map(s => {
+      const v = stats[s] || 50;
+      const gr = statGrade(v);
+      return `<div class="stat-row">
+        <span class="stat-label">${s}</span>
+        <span><span class="stat-value" style="font-size:0.85rem;">${v}</span><span class="stat-grade ${gr.cls}">${gr.g}</span></span>
+      </div>`;
+    }).join('');
+}
+
+function renderCharMeta() {
+  const el = document.getElementById('play-char-meta');
+  if (!el) return;
+  const c = G.activeChar;
+  el.innerHTML = `
+    <div class="char-meta-row"><span style="color:var(--border-2);">Level</span><span>${c.level || 1}</span></div>
+    <div class="char-meta-row"><span style="color:var(--border-2);">Gold</span><span style="color:var(--gold);">${G.gold ?? c.gold ?? 10}g</span></div>
+    <div class="char-meta-row"><span style="color:var(--border-2);">Mode</span><span style="font-size:0.7rem;">${c.survival_mode || 'standard'}</span></div>
+    <div class="char-meta-row"><span style="color:var(--border-2);">Location</span><span style="font-size:0.7rem;text-align:right;max-width:100px;">${c.current_location || '—'}</span></div>
+  `;
+}
+
+function renderInventory() {
+  const el = document.getElementById('play-inventory');
+  if (!el) return;
+  const inv = G.inventory || [];
+  if (inv.length === 0) {
+    el.innerHTML = '<div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">Empty...</div>';
+    return;
+  }
+  el.innerHTML = inv.map(item => {
+    const rarityColors = { common:'var(--ash)', uncommon:'#4ade80', rare:'#60a5fa', epic:'#a855f7', legendary:'#f59e0b' };
+    const col = rarityColors[item.rarity] || rarityColors.common;
+    return `<div class="inv-item">
+      <span class="inv-item-name" style="color:${col};">${item.name}</span>
+      ${item.qty > 1 ? `<span class="inv-item-qty">x${item.qty}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderQuests() {
+  const el = document.getElementById('play-quests');
+  if (!el) return;
+  if (!G.quests || G.quests.length === 0) {
+    el.innerHTML = '<div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">No active quests.</div>';
+    return;
+  }
+  el.innerHTML = G.quests.filter(q => q.status !== 'complete').map(q => `
+    <div class="quest-item">
+      <div class="quest-title">${q.title}</div>
+      <div class="quest-desc">${q.desc || ''}</div>
+    </div>`).join('');
+}
+
+function renderNPCs() {
+  const el = document.getElementById('play-npcs');
+  if (!el) return;
+  if (!G.npcs || G.npcs.length === 0) {
+    el.innerHTML = '<div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">No known contacts.</div>';
+    return;
+  }
+  el.innerHTML = G.npcs.map(n => `
+    <div class="inv-item">
+      <span class="inv-item-name">${n.name}</span>
+      <span class="inv-item-qty" style="font-size:0.65rem;color:${n.attitude === 'hostile' ? 'var(--red-bright)' : n.attitude === 'friendly' ? '#4ade80' : 'var(--ash)'};">${n.attitude || '?'}</span>
+    </div>`).join('');
+}
+
+function renderQuickActions() {
+  const el = document.getElementById('play-quick-actions');
+  if (!el) return;
+  const actions = ['Look around','Check inventory','Talk to someone','Rest'];
+  el.innerHTML = actions.map(a => `
+    <button class="btn btn-ghost" style="font-size:0.6rem;padding:4px 10px;border:1px solid var(--border);" onclick="quickAction('${a}')">${a}</button>
+  `).join('');
+}
+
+function quickAction(text) {
+  const input = document.getElementById('play-input');
+  if (input) { input.value = text; sendAction(); }
+}
+
+// ── AI CALLS ─────────────────────────────
+async function callAI(systemPrompt, userPrompt, maxTokens) {
+  const key = G.apiKey;
+  if (!key) { showToast('Add your API key in Settings.'); return ''; }
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: maxTokens || 600,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || '';
+  } catch(e) {
+    console.error('AI error:', e);
+    return '';
+  }
+}
+
+async function generateOpeningScene() {
+  const w = G.activeWorld, c = G.activeChar;
+  setLoading(true);
+  const sys = buildNarratorSystem();
+  const prompt = `Begin the campaign. The character "${c.name}" (${c.class}, ${c.race}) has just arrived in the world of ${w.name}. Write the opening scene — atmospheric, cinematic, 2-3 paragraphs. Establish setting, mood, and an immediate hook that invites action. End with a question or situation that demands a response.`;
+  const text = await callAI(sys, prompt, 800);
+  setLoading(false);
+  if (text) {
+    G.messages.push({ role: 'narrator', text });
+    G.turnCount++;
+    renderMessages();
+  }
+}
+
+async function sendAction() {
+  const input = document.getElementById('play-input');
+  const text = input?.value?.trim();
+  if (!text || G.loading) return;
+  input.value = '';
+
+  G.messages.push({ role: 'player', text });
+  renderMessages();
+  setLoading(true);
+
+  const sys = buildNarratorSystem();
+  const context = buildContext();
+  const res = await callAI(sys, context + '\n\nPlayer action: ' + text, 900);
+
+  setLoading(false);
+  if (res) {
+    G.messages.push({ role: 'narrator', text: res });
+    G.turnCount++;
+    renderMessages();
+    saveGameState();
+    // Periodic summary every 10 turns
+    if (G.turnCount % 10 === 0) compressSummary();
+  }
+}
+
+function buildNarratorSystem() {
+  const w = G.activeWorld, c = G.activeChar;
+  const pov = c.pov === 'first' ? 'first person (I, me, my)' : c.pov === 'third' ? 'third person ([character name], they)' : 'second person (you, your)';
+  return `You are the Narrator of ${w.name} — a dark, cinematic tabletop RPG.
+WORLD: ${w.description || w.lore?.slice(0,300)}
+POWER SYSTEM: ${w.power_system_type || 'unknown'}
+RANKS: ${w.rank_names || 'standard'}
+CHARACTER: ${c.name} (${c.class}, ${c.race}, Lv.${c.level||1}) — ${c.backstory?.slice(0,200)||'no backstory'}
+HP: ${G.charHP}/${G.charMaxHP}
+POV: ${pov}
+TONE: Dark, atmospheric, consequential. Every action matters. Be vivid but concise (2-3 paragraphs max). 
+If Vesper has insight to share, prefix it with [WHISPER: your insight here] — short, italic, cryptic.
+NEVER break character. NEVER be generic.`;
+}
+
+function buildContext() {
+  const recent = G.messages.slice(-8).map(m => `${m.role === 'player' ? 'Player' : 'Narrator'}: ${m.text}`).join('\n\n');
+  return (G.campaignSummary ? 'CAMPAIGN SO FAR: ' + G.campaignSummary + '\n\n' : '') +
+    'RECENT:\n' + recent;
+}
+
+async function compressSummary() {
+  const msgs = G.messages.slice(-20).map(m => m.text).join('\n');
+  const summary = await callAI('Compress this campaign into 2-3 sentences. Focus on key events, decisions, and consequences.', msgs, 200);
+  if (summary) G.campaignSummary = summary;
+  saveGameState();
+}
+
+// ── MESSAGE RENDERING ────────────────────
+function renderMessages() {
+  const el = document.getElementById('play-narrative');
+  if (!el) return;
+  el.innerHTML = G.messages.map(m => {
+    if (m.role === 'narrator') {
+      // Parse [WHISPER: ...] tags
+      let html = m.text.replace(/\[WHISPER:\s*(.*?)\]/g, '<div class="whisper">$1</div>');
+      html = html.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+      return `<div class="narrative-block narrative-narrator fade-in"><p>${html}</p></div>`;
+    } else {
+      return `<div class="narrative-block narrative-player fade-in">${escHtml(m.text)}</div>`;
+    }
+  }).join('');
+  // Scroll to bottom
+  el.scrollTop = el.scrollHeight;
+}
+
+function setLoading(v) {
+  G.loading = v;
+  const btn = document.getElementById('play-send-btn');
+  if (btn) btn.disabled = v;
+  const narr = document.getElementById('play-narrative');
+  if (narr) {
+    const existing = narr.querySelector('.loading-dots');
+    if (v && !existing) {
+      narr.insertAdjacentHTML('beforeend', '<div class="dots loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>');
+      narr.scrollTop = narr.scrollHeight;
+    } else if (!v && existing) {
+      existing.remove();
+    }
+  }
+}
+
+// ── GAME STATE SAVE/LOAD ─────────────────
+function saveGameState() {
+  if (!G.activeChar) return;
+  const key = LS.STATE + '_' + G.activeChar.id;
+  localStorage.setItem(key, JSON.stringify({
+    messages: G.messages.slice(-50),
+    campaignSummary: G.campaignSummary,
+    keyEvents: G.keyEvents,
+    npcs: G.npcs,
+    quests: G.quests,
+    inventory: G.inventory,
+    gold: G.gold,
+    charHP: G.charHP,
+    charMaxHP: G.charMaxHP,
+    turnCount: G.turnCount,
+  }));
+}
+
+function loadGameState() {
+  if (!G.activeChar) return;
+  const key = LS.STATE + '_' + G.activeChar.id;
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null');
+    if (saved) {
+      G.messages = saved.messages || [];
+      G.campaignSummary = saved.campaignSummary || '';
+      G.keyEvents = saved.keyEvents || [];
+      G.npcs = saved.npcs || [];
+      G.quests = saved.quests || [];
+      G.inventory = saved.inventory || [];
+      G.gold = saved.gold ?? 10;
+      G.charHP = saved.charHP ?? G.activeChar.health ?? 100;
+      G.charMaxHP = saved.charMaxHP ?? G.activeChar.health ?? 100;
+      G.turnCount = saved.turnCount || 0;
+    } else {
+      G.messages = [];
+      G.campaignSummary = '';
+      G.keyEvents = [];
+      G.npcs = [];
+      G.quests = [];
+      G.inventory = [];
+      G.gold = G.activeChar.gold || 10;
+      G.charHP = G.activeChar.health || 100;
+      G.charMaxHP = G.activeChar.health || 100;
+      G.turnCount = 0;
+    }
+  } catch(e) {
+    G.messages = [];
+  }
+}
+
+// ── VESPER ───────────────────────────────
+function openVesper(context) {
+  G.vesperOpen = true;
+  const panel = document.getElementById('vesper-panel');
+  if (panel) panel.classList.remove('hidden');
+  if (G.vesperMessages.length === 0) {
+    G.vesperMessages.push({ from: 'vesper', text: 'I\'m here. What are you working through?' });
+    renderVesperMessages();
+  }
+}
+
+function closeVesper() {
+  G.vesperOpen = false;
+  const panel = document.getElementById('vesper-panel');
+  if (panel) panel.classList.add('hidden');
+}
+
+function renderVesperMessages() {
+  const el = document.getElementById('vesper-messages');
+  if (!el) return;
+  el.innerHTML = G.vesperMessages.map(m => `
+    <div class="vesper-msg ${m.from === 'vesper' ? 'from-vesper' : 'from-user'}">${escHtml(m.text)}</div>
+  `).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendVesper() {
+  const input = document.getElementById('vesper-input');
+  const text = input?.value?.trim();
+  if (!text) return;
+  input.value = '';
+  G.vesperMessages.push({ from: 'user', text });
+  renderVesperMessages();
+
+  const w = G.activeWorld, c = G.activeChar || G.draftChar;
+  const sys = `You are Vesper — Aurora's creative partner. You're sharp, warm, and honest. You help the user think through character ideas, world lore, and game decisions. Keep responses to 2-3 sentences. Be direct and specific, not generic. Never say "great question".`;
+  const ctx = `World: ${w?.name || 'unknown'}. Character: ${c?.name || 'none'}.`;
+  const res = await callAI(sys, ctx + '\n\nUser: ' + text, 300);
+  if (res) {
+    G.vesperMessages.push({ from: 'vesper', text: res });
+    renderVesperMessages();
+  }
+}
+
+// ── JOURNAL / SHOP ───────────────────────
+function toggleJournal() {
+  const modal = document.getElementById('modal-journal');
+  if (!modal) return;
+  document.getElementById('journal-summary').textContent = G.campaignSummary || 'Your story is just beginning...';
+  document.getElementById('journal-events').innerHTML = G.keyEvents.length === 0
+    ? '<div style="color:var(--ash);font-style:italic;">No key events yet.</div>'
+    : G.keyEvents.map(e => `<div style="padding:6px 0;border-bottom:1px solid var(--border);color:var(--parchment-2);">Turn ${e.turn}: ${e.text}</div>`).join('');
+  modal.classList.toggle('hidden');
+}
+
+function openShop() { showToast('Shop coming soon...'); }
+
+// ── SETTINGS ─────────────────────────────
+function showSettings() {
+  const modal = document.getElementById('modal-settings');
+  const input = document.getElementById('settings-apikey');
+  if (modal) modal.classList.remove('hidden');
+  if (input) input.value = G.apiKey || '';
+}
+
+function saveSettings() {
+  const val = document.getElementById('settings-apikey')?.value?.trim();
+  if (val) { G.apiKey = val; localStorage.setItem(LS.KEY, val); }
+  closeModal('settings');
+  showToast('Settings saved.');
+}
+
+function closeModal(id) {
+  const modal = document.getElementById('modal-' + id);
+  if (modal) modal.classList.add('hidden');
+}
+
+// ── LEAVE ────────────────────────────────
+function confirmLeave() {
+  saveGameState();
+  goTo('chars');
+}
+
+// ── TOAST ────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+}
+
+// ── UTIL ──────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── BOOT ─────────────────────────────────
+loadData();
+goTo('home');
+</script>
+</body>
+</html>
