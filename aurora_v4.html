@@ -2270,37 +2270,35 @@ const MOROS_PRESET = {
   _isPreset: true,
 };
 
-// Secret unlock — tap Aurora logo 5x within 3 seconds on home screen
+// Secret unlock — type "moros" anywhere on the home screen
 (function() {
-  let _tapCount = 0;
-  let _tapTimer = null;
+  let _buffer = '';
+  const _code = 'moros';
+  const _maxLen = _code.length;
 
-  function _resetTap() { _tapCount = 0; }
-
-  function _onLogoTap() {
-    _tapCount++;
-    if (_tapTimer) clearTimeout(_tapTimer);
-    _tapTimer = setTimeout(_resetTap, 3000);
-
-    if (_tapCount >= 5) {
-      _tapCount = 0;
-      clearTimeout(_tapTimer);
-      _unlockMoros();
+  function _onKey(e) {
+    // Only active on home screen
+    if (G.screen !== 'home') return;
+    // Only regular letter keys
+    if (e.key && e.key.length === 1) {
+      _buffer += e.key.toLowerCase();
+      if (_buffer.length > _maxLen) _buffer = _buffer.slice(-_maxLen);
+      if (_buffer === _code) {
+        _buffer = '';
+        _unlockMoros();
+      }
     }
   }
 
   function _unlockMoros() {
-    // Check if Moros already exists
     const existing = G.chars.find(c => c.id === 'moros-preset-001');
     if (existing) {
-      // Already unlocked — go straight to play
       G.char = existing;
       G.world = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
       goTo('play');
       _showGhostMsg('Welcome back, Moros.');
       return;
     }
-    // First unlock — inject preset
     const preset = JSON.parse(JSON.stringify(MOROS_PRESET));
     G.chars.unshift(preset);
     saveChars();
@@ -2335,26 +2333,55 @@ const MOROS_PRESET = {
     }, 1400);
   }
 
-  // Attach after DOM ready
+  // ── Mobile: hidden input trick ──
+  // A tiny invisible input that gets focus when you tap the logo
+  // so the keyboard opens and you can type the code
   document.addEventListener('DOMContentLoaded', function() {
     const logo = document.querySelector('.home-title');
+
+    // Hidden input for mobile keyboard
+    const hiddenInput = document.createElement('input');
+    hiddenInput.setAttribute('type', 'text');
+    hiddenInput.setAttribute('autocomplete', 'off');
+    hiddenInput.setAttribute('autocorrect', 'off');
+    hiddenInput.setAttribute('autocapitalize', 'off');
+    hiddenInput.setAttribute('spellcheck', 'false');
+    hiddenInput.style.cssText = 'position:fixed;opacity:0;pointer-events:none;width:1px;height:1px;top:0;left:0;border:none;outline:none;background:transparent;color:transparent;font-size:16px;';
+    document.body.appendChild(hiddenInput);
+
+    // Desktop: listen on keydown globally
+    document.addEventListener('keydown', _onKey);
+
+    // Mobile: tap logo to focus hidden input, then type
     if (logo) {
       logo.style.cursor = 'default';
-      logo.style.touchAction = 'manipulation';
-      logo.style.userSelect = 'none';
-      logo.style.webkitUserSelect = 'none';
-      // Use touchstart to fire before browser zoom logic kicks in
-      logo.addEventListener('touchstart', function(e) {
+      logo.addEventListener('touchend', function(e) {
         e.preventDefault();
-        e.stopPropagation();
-        _onLogoTap();
-      }, { passive: false });
-      // Desktop fallback
-      logo.addEventListener('click', function(e) {
-        // Only fire on non-touch (touch already handled above)
-        if (!('ontouchstart' in window)) _onLogoTap();
+        hiddenInput.value = '';
+        hiddenInput.focus();
+        _showGhostMsg('...');
+      });
+      logo.addEventListener('click', function() {
+        if ('ontouchstart' in window) return;
+        hiddenInput.value = '';
+        hiddenInput.focus();
       });
     }
+
+    // Listen to input on the hidden field (mobile keyboard)
+    hiddenInput.addEventListener('input', function() {
+      const val = hiddenInput.value.toLowerCase();
+      _buffer = val.slice(-_maxLen);
+      if (_buffer === _code) {
+        _buffer = '';
+        hiddenInput.value = '';
+        hiddenInput.blur();
+        _unlockMoros();
+      }
+    });
+
+    // Also clear buffer when leaving home
+    const _origGoTo = window.goTo;
   });
 })();
 
