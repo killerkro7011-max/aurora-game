@@ -402,6 +402,40 @@ select option { background: var(--ink-3); }
   padding: 16px;
 }
 
+/* ── NARRATIVE CONTROLS ── */
+.narrative-controls {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 4px 0 8px 0;
+  background: linear-gradient(to bottom, var(--ink) 70%, transparent);
+  pointer-events: none;
+}
+.narrative-controls button {
+  pointer-events: all;
+  background: var(--ink-2);
+  border: 1px solid var(--border);
+  color: var(--ash);
+  font-size: 0.65rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.narrative-controls button:hover {
+  color: var(--gold-dim);
+  border-color: var(--gold-dim);
+}
+.narrative-controls button.copied {
+  color: #6fcf97;
+  border-color: #6fcf97;
+}
+
 /* ── PLAY SCREEN ── */
 #screen-play {
   width: 100vw;
@@ -1159,6 +1193,11 @@ select option { background: var(--ink-3); }
 
   <!-- Center: narrative -->
   <div class="play-center" id="play-narrative">
+    <div class="narrative-controls">
+      <button onclick="narrativeFontSize(-1)" title="Decrease font size">A−</button>
+      <button onclick="narrativeFontSize(1)" title="Increase font size">A+</button>
+      <button id="copy-narrative-btn" onclick="copyNarrativeText()" title="Copy narrative text">Copy</button>
+    </div>
     <div class="narrative-system">— The story begins —</div>
   </div>
 
@@ -1402,7 +1441,7 @@ function goTo(screen) {
 function onScreenEnter(screen) {
   if (screen === 'worlds')       renderWorldsGrid();
   if (screen === 'chars')        renderCharsGrid();
-  if (screen === 'play')         initPlayScreen();
+  if (screen === 'play')         { restoreNarrativeFontSize(); initPlayScreen(); }
   if (screen === 'create-char')  initCharCreator();
   if (screen === 'create-world') initWorldCreator();
 }
@@ -2431,6 +2470,63 @@ const MOROS_PRESET = {
     const _origGoTo = window.goTo;
   });
 })();
+
+
+// ── NARRATIVE CONTROLS ───────────────────
+let _narrativeFontSize = 15; // px, default
+
+function narrativeFontSize(delta) {
+  _narrativeFontSize = Math.max(10, Math.min(26, _narrativeFontSize + delta));
+  const narr = document.getElementById('play-narrative');
+  if (narr) {
+    // Apply to all narrative message/system elements
+    narr.querySelectorAll('.narrative-msg, .narrative-system, .narrative-user, .whisper-block, .narrative-msg p, .narrative-msg span').forEach(el => {
+      el.style.fontSize = _narrativeFontSize + 'px';
+    });
+    // Save preference
+    try { localStorage.setItem('aurora_font_size', _narrativeFontSize); } catch(e) {}
+  }
+}
+
+function copyNarrativeText() {
+  const narr = document.getElementById('play-narrative');
+  if (!narr) return;
+  // Grab all text except the controls themselves
+  const clone = narr.cloneNode(true);
+  const controls = clone.querySelector('.narrative-controls');
+  if (controls) controls.remove();
+  const text = clone.innerText || clone.textContent || '';
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    const btn = document.getElementById('copy-narrative-btn');
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+    }
+  }).catch(() => {
+    // Fallback for non-secure context
+    const ta = document.createElement('textarea');
+    ta.value = (clone.innerText || clone.textContent || '').trim();
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    const btn = document.getElementById('copy-narrative-btn');
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+    }
+  });
+}
+
+// Restore saved font size on play screen enter
+function restoreNarrativeFontSize() {
+  try {
+    const saved = localStorage.getItem('aurora_font_size');
+    if (saved) { _narrativeFontSize = parseInt(saved); }
+  } catch(e) {}
+}
 
 // ── BOOT ─────────────────────────────────
 loadData();
