@@ -1026,6 +1026,7 @@ select option { background: var(--ink-3); }
   <div class="home-menu">
     <button class="btn btn-gold" onclick="goTo('worlds')">Enter the Worlds</button>
     <button class="btn" onclick="goTo('create-world')">Forge a New World</button>
+    <button class="btn" onclick="_unlockMoros()" style="border-color:var(--gold-dim);color:var(--gold-dim);font-size:0.6rem;letter-spacing:0.2em;">⬡ Continue as Moros</button>
     <button class="btn btn-ghost" onclick="showSettings()">⚙ Settings</button>
   </div>
   <div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);font-family:'Cinzel',serif;font-size:0.5rem;letter-spacing:0.3em;color:var(--border-2);text-transform:uppercase;">
@@ -2290,7 +2291,7 @@ const MOROS_PRESET = {
     }
   }
 
-  function _unlockMoros() {
+  window._unlockMoros = function _unlockMoros() {
     const existing = G.chars.find(c => c.id === 'moros-preset-001');
     if (existing) {
       G.char = existing;
@@ -2336,6 +2337,7 @@ const MOROS_PRESET = {
   // ── Mobile: hidden input trick ──
   // A tiny invisible input that gets focus when you tap the logo
   // so the keyboard opens and you can type the code
+  window._unlockMoros = _unlockMoros;
   document.addEventListener('DOMContentLoaded', function() {
     const logo = document.querySelector('.home-title');
 
