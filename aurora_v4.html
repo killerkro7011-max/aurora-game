@@ -790,6 +790,222 @@ select option { background: var(--ink-3); }
 .text-center { text-align: center; }
 .italic { font-style: italic; }
 .font-cinzel { font-family: 'Cinzel', serif; }
+
+/* ═══════════════════════════════════════════
+   AURORA v4 — MOBILE RESPONSIVE
+   Breakpoint: 768px
+═══════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── GLOBAL ── */
+  body { font-size: 15px; }
+
+  .topnav { padding: 0 10px; }
+  .topnav-logo { font-size: 0.8rem; }
+  .topnav-btn { font-size: 0.55rem; padding: 4px 8px; }
+
+  /* ── HOME SCREEN ── */
+  .home-title { font-size: 3rem; letter-spacing: 0.2em; }
+  .home-menu { width: 90vw; max-width: 320px; }
+
+  /* ── WORLDS GRID ── */
+  .worlds-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  /* ── CHARACTER CREATOR ── */
+  .creator-layout {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+
+  /* Steps become a horizontal scrolling tab bar */
+  .creator-steps {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    display: flex;
+    flex-direction: row;
+    min-height: 44px;
+    max-height: 44px;
+  }
+  .creator-steps > div:first-child { display: none; } /* hide "Steps" label */
+  #creator-step-list {
+    display: flex;
+    flex-direction: row;
+    width: max-content;
+  }
+  .creator-step-item {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 12px;
+    font-size: 0.5rem;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .creator-step-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--gold);
+  }
+  .creator-step-icon { font-size: 0.9rem; width: auto; }
+
+  /* Hide preview sidebar on mobile — show inline instead */
+  .creator-preview { display: none; }
+
+  .creator-main { padding: 16px; }
+
+  /* ── WORLD CREATOR ── */
+  #screen-create-world > div[style*="grid-template-columns"] {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: calc(100vh - 44px);
+  }
+  #world-creator-main {
+    padding: 16px !important;
+    overflow-y: visible !important;
+  }
+  #world-creator-side {
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    overflow-y: visible !important;
+    padding: 16px;
+  }
+
+  /* ── PLAY SCREEN ── */
+  #screen-play {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 40px 1fr auto auto !important;
+    overflow-y: auto;
+  }
+
+  /* Top bar — compact */
+  .play-topbar { padding: 0 8px; gap: 4px; }
+  .play-topbar-title { font-size: 0.75rem; }
+  .play-topbar .btn { font-size: 0.5rem; padding: 3px 7px; }
+
+  /* Left char panel — collapses to a horizontal strip */
+  .play-left {
+    grid-column: 1 !important;
+    grid-row: 3 !important;
+    display: flex !important;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    border-right: none;
+    max-height: none;
+    overflow: visible;
+    align-items: center;
+  }
+  .char-portrait {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 1.2rem !important;
+    flex-shrink: 0;
+  }
+  .char-name-display { font-size: 0.75rem !important; }
+  .char-level-display { font-size: 0.6rem !important; }
+
+  /* Narrative center — full width, scrollable */
+  .play-center {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    overflow-y: auto;
+    min-height: 40vh;
+  }
+
+  /* Right panel — collapses to bottom tab area */
+  .play-right {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    border-left: none !important;
+    border-top: 1px solid var(--border);
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* Input area — always visible at bottom */
+  .play-input-area {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--ink-2);
+    border-top: 1px solid var(--border);
+    padding: 8px;
+  }
+  /* Pad the center so input doesn't cover text */
+  .play-center { padding-bottom: 80px !important; }
+
+  /* Action buttons wrap */
+  .action-buttons { flex-wrap: wrap !important; gap: 6px !important; }
+  .action-btn { font-size: 0.6rem !important; padding: 6px 10px !important; }
+
+  /* Vesper panel — full screen on mobile */
+  #vesper-panel {
+    width: 100vw !important;
+    right: 0 !important;
+    top: 44px !important;
+    height: calc(100vh - 44px) !important;
+  }
+
+  /* Modals — full screen */
+  .modal-box {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 85vh !important;
+    margin: 0 auto;
+  }
+
+  /* Form fields */
+  .form-field { margin-bottom: 18px; }
+  .form-label { font-size: 0.65rem; }
+  input, textarea, select {
+    font-size: 15px !important; /* prevents iOS zoom */
+  }
+
+  /* Chip selectors wrap properly */
+  .chip-group { flex-wrap: wrap !important; gap: 6px !important; }
+  .chip { font-size: 0.6rem !important; padding: 4px 10px !important; }
+
+  /* Buttons */
+  .btn { font-size: 0.7rem; padding: 8px 14px; }
+  .btn-gold { width: 100%; justify-content: center; }
+
+  /* Nav footer buttons */
+  .creator-footer {
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 8px;
+  }
+
+  /* Stat grid compact */
+  .stat-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 6px !important;
+  }
+  .stat-box { padding: 8px 4px !important; }
+  .stat-val { font-size: 1.4rem !important; }
+  .stat-name { font-size: 0.45rem !important; }
+}
+
+/* Extra small phones */
+@media (max-width: 390px) {
+  .home-title { font-size: 2.5rem; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  .worlds-grid { padding: 10px; }
+}
+
 </style>
 </head>
 <body>
