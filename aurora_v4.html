@@ -2294,8 +2294,9 @@ const MOROS_PRESET = {
   window._unlockMoros = function _unlockMoros() {
     const existing = G.chars.find(c => c.id === 'moros-preset-001');
     if (existing) {
-      G.char = existing;
-      G.world = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+      G.activeChar = existing;
+      G.activeWorld = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+      G.messages = [];
       goTo('play');
       _showGhostMsg('Welcome back, Moros.');
       return;
@@ -2303,8 +2304,9 @@ const MOROS_PRESET = {
     const preset = JSON.parse(JSON.stringify(MOROS_PRESET));
     G.chars.unshift(preset);
     saveChars();
-    G.char = preset;
-    G.world = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+    G.activeChar = preset;
+    G.activeWorld = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+    G.messages = [];
     _showGhostMsg('The Spell remembers you.');
     setTimeout(() => goTo('play'), 1800);
   }
