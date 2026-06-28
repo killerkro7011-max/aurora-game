@@ -2218,6 +2218,130 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+
+// ═══════════════════════════════════════════
+// MOROS — OWNER PRESET (hidden)
+// Unlock: tap the Aurora logo 5 times fast on home screen
+// ═══════════════════════════════════════════
+const MOROS_PRESET = {
+  id: 'moros-preset-001',
+  name: 'Moros',
+  world_id: 'shadow-slave-001',
+  class: 'Dormant',
+  race: 'Human',
+  level: 1,
+  experience: 0,
+  health: 100,
+  charHP: 100,
+  gold: 0,
+  alignment: 'Neutral',
+  status: 'active',
+  origin: 'Outskirts — Block 9, Residential District',
+  origin_detail: 'Born and raised in the outskirts. Learned early that survival means reading people before they read you. Never trusted anyone long enough for it to matter. Three weeks ago the Spell found him. He told no one.',
+  flaw: 'Written End',
+  flaw_detail: 'Your doom is already decided. You have seen it. A single rune is burned into your soul — not an ability, not a memory. Just an image. The manner of your death. It is always there, patient, like a sentence at the end of a very long book. You cannot remove it. You cannot misread it.',
+  backstory: "Moros grew up in the outskirts the same way everyone does — watching your back, eating when you can, trusting nobody. He's not remarkable by any measure anyone would bother using. No Legacy blood. No connections. No name that means anything. Just a quiet, watchful young man from Block 9 who has always had a talent for knowing when something is about to go wrong. He's been right more times than he can count. The infection mark appeared on his wrist three weeks ago. Tonight it reached his shoulder. He went to sleep in his cot and didn't wake up in the outskirts.",
+  abilities: 'Unknown — to be discovered through play',
+  stats: { strength: 12, agility: 15, perception: 18, endurance: 11, willpower: 16, luck: 8 },
+  inventoryItems: [],
+  craftingSkills: [],
+  npcs: [],
+  quests: [],
+  factionRep: {},
+  campaignSummary: 'Week 0 — The First Nightmare begins. Moros has just arrived in the trial ground. He has no runes yet. No aspect. No memories. Just himself.',
+  campaignTimeline: ['Week 0: Nightmare Spell infection confirmed. First Nightmare begins.'],
+  recentMemory: ['Moros fell asleep in his cot in Block 9. The infection mark reached his shoulder. He did not wake up in the outskirts.'],
+  keyEvents: [],
+  worldTime: { current: 'First Nightmare', detail: 'Three weeks after Sunless and his cohort entered the Forgotten Shore' },
+  survivalStats: { hunger: 80, thirst: 80, fatigue: 60 },
+  deathCount: 0,
+  resonance: 0,
+  npcMemory: null,
+  narratorStyle: "dark, literary, psychological. Shadow Slave canon tone. Guiltythree-inspired prose. Never reveal Moros's aspect directly — let him discover it through action and consequence.",
+  pov: null,
+  survival_mode: null,
+  progression_mode: null,
+  race_traits: null,
+  race_stat_bonus: null,
+  _isPreset: true,
+};
+
+// Secret unlock — tap Aurora logo 5x within 3 seconds on home screen
+(function() {
+  let _tapCount = 0;
+  let _tapTimer = null;
+
+  function _resetTap() { _tapCount = 0; }
+
+  function _onLogoTap() {
+    _tapCount++;
+    if (_tapTimer) clearTimeout(_tapTimer);
+    _tapTimer = setTimeout(_resetTap, 3000);
+
+    if (_tapCount >= 5) {
+      _tapCount = 0;
+      clearTimeout(_tapTimer);
+      _unlockMoros();
+    }
+  }
+
+  function _unlockMoros() {
+    // Check if Moros already exists
+    const existing = G.chars.find(c => c.id === 'moros-preset-001');
+    if (existing) {
+      // Already unlocked — go straight to play
+      G.char = existing;
+      G.world = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+      goTo('play');
+      _showGhostMsg('Welcome back, Moros.');
+      return;
+    }
+    // First unlock — inject preset
+    const preset = JSON.parse(JSON.stringify(MOROS_PRESET));
+    G.chars.unshift(preset);
+    saveChars();
+    G.char = preset;
+    G.world = G.worlds.find(w => w.id === 'shadow-slave-001') || G.worlds[0];
+    _showGhostMsg('The Spell remembers you.');
+    setTimeout(() => goTo('play'), 1800);
+  }
+
+  function _showGhostMsg(msg) {
+    const div = document.createElement('div');
+    div.style.cssText = [
+      'position:fixed','top:50%','left:50%',
+      'transform:translate(-50%,-50%)',
+      'font-family:\'Cinzel\',serif',
+      'font-size:1.1rem',
+      'letter-spacing:0.25em',
+      'color:#c9a84c',
+      'text-align:center',
+      'pointer-events:none',
+      'z-index:9999',
+      'opacity:0',
+      'transition:opacity 0.6s ease',
+      'text-shadow:0 0 30px rgba(201,168,76,0.8)',
+    ].join(';');
+    div.textContent = msg;
+    document.body.appendChild(div);
+    requestAnimationFrame(() => { div.style.opacity = '1'; });
+    setTimeout(() => {
+      div.style.opacity = '0';
+      setTimeout(() => div.remove(), 700);
+    }, 1400);
+  }
+
+  // Attach after DOM ready
+  document.addEventListener('DOMContentLoaded', function() {
+    const logo = document.querySelector('.home-title');
+    if (logo) {
+      logo.style.cursor = 'default';
+      logo.addEventListener('click', _onLogoTap);
+      logo.addEventListener('touchend', function(e) { e.preventDefault(); _onLogoTap(); });
+    }
+  });
+})();
+
 // ── BOOT ─────────────────────────────────
 loadData();
 goTo('home');
