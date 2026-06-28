@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Aurora</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet"/>
@@ -805,7 +805,11 @@ select option { background: var(--ink-3); }
   .topnav-btn { font-size: 0.55rem; padding: 4px 8px; }
 
   /* ── HOME SCREEN ── */
-  .home-title { font-size: 3rem; letter-spacing: 0.2em; }
+  .home-title {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none; font-size: 3rem; letter-spacing: 0.2em; }
   .home-menu { width: 90vw; max-width: 320px; }
 
   /* ── WORLDS GRID ── */
@@ -2336,8 +2340,20 @@ const MOROS_PRESET = {
     const logo = document.querySelector('.home-title');
     if (logo) {
       logo.style.cursor = 'default';
-      logo.addEventListener('click', _onLogoTap);
-      logo.addEventListener('touchend', function(e) { e.preventDefault(); _onLogoTap(); });
+      logo.style.touchAction = 'manipulation';
+      logo.style.userSelect = 'none';
+      logo.style.webkitUserSelect = 'none';
+      // Use touchstart to fire before browser zoom logic kicks in
+      logo.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _onLogoTap();
+      }, { passive: false });
+      // Desktop fallback
+      logo.addEventListener('click', function(e) {
+        // Only fire on non-touch (touch already handled above)
+        if (!('ontouchstart' in window)) _onLogoTap();
+      });
     }
   });
 })();
