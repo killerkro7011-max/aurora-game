@@ -2100,7 +2100,13 @@ function buildNarratorSystem() {
   // Use full Shadow Slave lore document if this is a Shadow Slave world
   const isShadowSlave = w.name && w.name.toLowerCase().includes('shadow slave');
   const worldLoreBlock = isShadowSlave
-    ? SHADOW_SLAVE_LORE
+    ? `── WORLD BACKGROUND KNOWLEDGE ──
+The following is your internal canon reference for the Shadow Slave world. This is NOT a description of the current scene. Do not narrate this lore — use it as knowledge to ensure every scene, mechanic, character, and creature is accurate to canon.
+
+${SHADOW_SLAVE_LORE}
+
+── CURRENT SETTING ──
+The story begins in the WAKING WORLD — Block 9, the Outskirts of the NQSC. This is a physical place: hive residential buildings, poisonous acrid air, factory shifts, ration packs, thin walls between units. Moros is here right now, the night before the Spell takes him. Narrate THIS place and THIS moment. Ground every detail in the grim reality of the Outskirts. The Dream Realm comes later.`
     : `WORLD: ${w.description || ''}\nLORE: ${(w.lore || '').slice(0, 600)}\nPOWER SYSTEM: ${w.power_system_type || 'unknown'}\nRANKS: ${w.rank_names || 'standard'}`;
 
   const characterBlock = [
