@@ -1333,6 +1333,17 @@ let G = {
   creatorStep: 0,
   draftChar: {},
   draftWorld: {},
+  // Shadow Slave specific
+  ssPhase: 'waking',       // 'waking' | 'nightmare' | 'awakening' | 'post'
+  ssNatureProfile: {},     // tracks player behavior for Aspect assignment
+  ssAspectRevealed: false,
+  ssAspect: null,
+  ssEchoes: [],            // found echoes
+  ssMarks: [],             // discovered ability clues
+  ssShadow: 0,             // 0-100 shadow stat
+  ssResonance: 100,        // current resonance
+  ssResonanceMax: 100,
+  ssWakingChoicesMade: 0,
 };
 
 // ── WORLD / CHAR STORAGE ─────────────────
@@ -1902,32 +1913,35 @@ function initPlayScreen() {
   const w = G.activeWorld, c = G.activeChar;
   if (!w || !c) { goTo('home'); return; }
 
-  // Top bar
   document.getElementById('play-world-label').textContent = w.name + ' · ' + c.name;
-
-  // Char panel
   document.getElementById('play-char-name').textContent = c.name;
-  document.getElementById('play-char-class').textContent = (c.class || '—') + ' · ' + (c.race || 'Unknown');
-  updateHPBar();
-  renderStatPanel();
-  renderCharMeta();
 
-  // Right panels
-  renderInventory();
-  renderQuests();
-  renderNPCs();
+  if (isShadowSlave()) {
+    initShadowSlaveUI();
+  } else {
+    document.getElementById('play-char-class').textContent = (c.class || '—') + ' · ' + (c.race || 'Unknown');
+    updateHPBar();
+    renderStatPanel();
+    renderCharMeta();
+    renderInventory();
+    renderQuests();
+    renderNPCs();
+  }
 
-  // Narrative
   const narr = document.getElementById('play-narrative');
   if (G.messages.length === 0) {
-    // Opening scene
     narr.innerHTML = '<div class="narrative-system">— The story begins —</div>';
-    generateOpeningScene();
+    if (isShadowSlave()) {
+      generateSSOpeningScene();
+    } else {
+      generateOpeningScene();
+    }
   } else {
     renderMessages();
   }
 
-  renderQuickActions();
+  if (!isShadowSlave()) renderQuickActions();
+  if (isShadowSlave()) renderSSQuickActions();
 }
 
 function updateHPBar() {
@@ -2078,18 +2092,20 @@ async function sendAction() {
   renderMessages();
   setLoading(true);
 
-  const sys = buildNarratorSystem();
-  const context = buildContext();
-  const res = await callAI(sys, context + '\n\nPlayer action: ' + text, 900);
-
-  setLoading(false);
-  if (res) {
-    G.messages.push({ role: 'narrator', text: res });
-    G.turnCount++;
-    renderMessages();
-    saveGameState();
-    // Periodic summary every 10 turns
-    if (G.turnCount % 10 === 0) compressSummary();
+  if (isShadowSlave()) {
+    await handleSSAction(text);
+  } else {
+    const sys = buildNarratorSystem();
+    const context = buildContext();
+    const res = await callAI(sys, context + '\n\nPlayer action: ' + text, 900);
+    setLoading(false);
+    if (res) {
+      G.messages.push({ role: 'narrator', text: res });
+      G.turnCount++;
+      renderMessages();
+      saveGameState();
+      if (G.turnCount % 10 === 0) compressSummary();
+    }
   }
 }
 
@@ -2182,15 +2198,23 @@ function renderMessages() {
   if (!el) return;
   el.innerHTML = G.messages.map(m => {
     if (m.role === 'narrator') {
-      // Parse [WHISPER: ...] tags
-      let html = m.text.replace(/\[WHISPER:\s*(.*?)\]/g, '<div class="whisper">$1</div>');
-      html = html.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
-      return `<div class="narrative-block narrative-narrator fade-in"><p>${html}</p></div>`;
-    } else {
-      return `<div class="narrative-block narrative-player fade-in">${escHtml(m.text)}</div>`;
+      let h = escHtml(m.text).replace(/\[WHISPER:\s*(.*?)\]/g, '<div class="whisper">$1</div>');
+      h = h.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+      return `<div class="narrative-block narrative-narrator fade-in"><p>${h}</p></div>`;
     }
+    if (m.role === 'spell') {
+      return `<div class="narrative-block fade-in" style="text-align:center;padding:10px 0;margin:8px 0;">
+        <span style="font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.2em;color:#6a5aaa;text-transform:uppercase;">[${escHtml(m.text)}]</span>
+      </div>`;
+    }
+    if (m.role === 'aspect-reveal') {
+      return `<div class="narrative-block fade-in" style="border:1px solid #4a3a6a;border-radius:4px;padding:16px 18px;margin:16px 0;background:rgba(74,58,106,0.12);text-align:center;">
+        <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.25em;color:#8a7aaa;text-transform:uppercase;margin-bottom:10px;">Aspect Awakens</div>
+        <div style="font-style:italic;color:var(--parchment-2);line-height:1.8;font-size:0.9rem;">${escHtml(m.text)}</div>
+      </div>`;
+    }
+    return `<div class="narrative-block narrative-player fade-in">${escHtml(m.text)}</div>`;
   }).join('');
-  // Scroll to bottom
   el.scrollTop = el.scrollHeight;
 }
 
@@ -2214,7 +2238,7 @@ function setLoading(v) {
 function saveGameState() {
   if (!G.activeChar) return;
   const key = LS.STATE + '_' + G.activeChar.id;
-  localStorage.setItem(key, JSON.stringify({
+  const data = {
     messages: G.messages.slice(-50),
     campaignSummary: G.campaignSummary,
     keyEvents: G.keyEvents,
@@ -2225,7 +2249,30 @@ function saveGameState() {
     charHP: G.charHP,
     charMaxHP: G.charMaxHP,
     turnCount: G.turnCount,
-  }));
+  };
+  if (isShadowSlave()) {
+    data.ss = {
+      phase: G.ssPhase,
+      natureProfile: G.ssNatureProfile,
+      aspectRevealed: G.ssAspectRevealed,
+      aspect: G.ssAspect,
+      echoes: G.ssEchoes,
+      marks: G.ssMarks,
+      shadow: G.ssShadow,
+      resonance: G.ssResonance,
+      resonanceMax: G.ssResonanceMax,
+      wakingChoicesMade: G.ssWakingChoicesMade,
+    };
+  }
+  localStorage.setItem(key, JSON.stringify(data));
+}
+
+// ── SHADOW SLAVE DETECTION ──────────────
+function isShadowSlave() {
+  return !!(G.activeWorld && (
+    G.activeWorld.name?.toLowerCase().includes('shadow slave') ||
+    G.activeWorld.id === 'ss-world-001'
+  ));
 }
 
 function loadGameState() {
@@ -2244,6 +2291,19 @@ function loadGameState() {
       G.charHP = saved.charHP ?? G.activeChar.health ?? 100;
       G.charMaxHP = saved.charMaxHP ?? G.activeChar.health ?? 100;
       G.turnCount = saved.turnCount || 0;
+      // Shadow Slave state
+      if (saved.ss) {
+        G.ssPhase = saved.ss.phase || 'waking';
+        G.ssNatureProfile = saved.ss.natureProfile || {};
+        G.ssAspectRevealed = saved.ss.aspectRevealed || false;
+        G.ssAspect = saved.ss.aspect || null;
+        G.ssEchoes = saved.ss.echoes || [];
+        G.ssMarks = saved.ss.marks || [];
+        G.ssShadow = saved.ss.shadow || 0;
+        G.ssResonance = saved.ss.resonance ?? 100;
+        G.ssResonanceMax = saved.ss.resonanceMax || 100;
+        G.ssWakingChoicesMade = saved.ss.wakingChoicesMade || 0;
+      }
     } else {
       G.messages = [];
       G.campaignSummary = '';
@@ -2260,6 +2320,467 @@ function loadGameState() {
     G.messages = [];
   }
 }
+
+
+// ════════════════════════════════════════════════════════
+//   SHADOW SLAVE ENGINE
+// ════════════════════════════════════════════════════════
+
+// ── PHASE LABELS ────────────────────────────────────────
+const SS_PHASES = {
+  waking:     'Waking World',
+  nightmare:  'First Nightmare',
+  awakening:  'Awakening',
+  post:       'Awakened',
+};
+
+// ── ASPECT CATEGORIES (assigned by nature profile) ──────
+const SS_ASPECT_TYPES = {
+  predator: {
+    label: 'Predator',
+    reveals: [
+      'Something changes in the space between one heartbeat and the next. The darkness does not recede. It moves with you.',
+      'You are still you. But the thing inside the darkness is also you. It has always been there.',
+      'Prey. The word arrives like a scent. You understand it before you understand that you understand it.',
+    ]
+  },
+  guardian: {
+    label: 'Guardian',
+    reveals: [
+      'The shadow does not fall on you. It falls around you. Between you and the thing that wants through.',
+      'You have never been afraid of dying. You realize now that this is because something else has always been afraid of you dying.',
+      'The darkness wraps around the other person. Not around you. It knows where it is needed.',
+    ]
+  },
+  phantom: {
+    label: 'Phantom',
+    reveals: [
+      'You step sideways. Not physically. Something deeper than that. The creature looks directly at where you were.',
+      'There is a version of you standing in the light. You are not that version.',
+      'The shadow is not something you cast. It is something you inhabit.',
+    ]
+  },
+  sovereign: {
+    label: 'Sovereign',
+    reveals: [
+      'The Nightmare pauses. Not stops — pauses. Like it is listening to something. Like it is waiting for you to decide.',
+      'Something in the dark recognizes you. Not as prey. Not as a threat. As something else entirely.',
+      'The silence is absolute. Then the Spell speaks, and for the first time, it sounds uncertain.',
+    ]
+  },
+};
+
+// ── NATURE PROFILE SCORING ──────────────────────────────
+function ssScoreAction(actionText, narratorResponse) {
+  const text = (actionText + ' ' + narratorResponse).toLowerCase();
+  const p = G.ssNatureProfile;
+  if (!p.aggression) p.aggression = 0;
+  if (!p.protection) p.protection = 0;
+  if (!p.cunning)    p.cunning    = 0;
+  if (!p.selfFocus)  p.selfFocus  = 0;
+
+  // Predator signals
+  if (/attack|strike|kill|hunt|charge|fight|stab|slash|threaten/i.test(text)) p.aggression++;
+  if (/myself|survive|escape|run|hide|my own|self/i.test(text))               p.selfFocus++;
+
+  // Guardian signals
+  if (/protect|help|save|defend|guard|shield|carry|pull.*away|get.*out/i.test(text)) p.protection++;
+
+  // Phantom signals
+  if (/watch|observe|wait|listen|sneak|quiet|shadow|follow|circle|study/i.test(text)) p.cunning++;
+}
+
+function ssGetAspectCategory() {
+  const p = G.ssNatureProfile;
+  const scores = {
+    predator:  (p.aggression || 0) + (p.selfFocus || 0),
+    guardian:  (p.protection || 0) * 2,
+    phantom:   (p.cunning || 0) * 2,
+    sovereign: 0,
+  };
+  // Sovereign: no clear dominant — high overall, balanced
+  const vals = Object.values(scores);
+  const max = Math.max(...vals);
+  const total = vals.reduce((a,b) => a+b, 0);
+  if (total >= 6 && max < total * 0.5) scores.sovereign = total;
+
+  return Object.entries(scores).sort((a,b) => b[1]-a[1])[0][0];
+}
+
+// ── UI: SHADOW SLAVE LEFT PANEL ─────────────────────────
+function initShadowSlaveUI() {
+  const c = G.activeChar;
+
+  // Replace class/race line with phase
+  document.getElementById('play-char-class').textContent = SS_PHASES[G.ssPhase] || 'Waking World';
+
+  // Replace HP bar with vitality
+  updateHPBar();
+
+  // Replace stats panel with SS stats
+  renderSSStatPanel();
+
+  // Replace right panels
+  renderSSRightPanel();
+}
+
+function renderSSStatPanel() {
+  const el = document.getElementById('play-stats-block');
+  if (!el) return;
+
+  const shadow = G.ssShadow || 0;
+  const res = G.ssResonance ?? 100;
+  const resMax = G.ssResonanceMax || 100;
+  const resPct = Math.round((res / resMax) * 100);
+  const shadowGrade = shadow < 10 ? 'Dormant' : shadow < 30 ? 'Stirring' : shadow < 60 ? 'Awake' : shadow < 85 ? 'Resonant' : 'Burning';
+
+  el.innerHTML = `
+    <div class="stat-row" style="margin-bottom:10px;">
+      <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:4px;">Shadow</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;height:4px;background:var(--border-1);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${shadow}%;background:linear-gradient(90deg,#4a4a6a,#8a7aaa);transition:width 0.5s;"></div>
+        </div>
+        <span style="font-size:0.7rem;color:var(--ash);font-style:italic;min-width:55px;">${shadowGrade}</span>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-bottom:10px;">
+      <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:4px;">Resonance</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="flex:1;height:4px;background:var(--border-1);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:${resPct}%;background:linear-gradient(90deg,#3a6a4a,#5aaa7a);transition:width 0.5s;"></div>
+        </div>
+        <span style="font-size:0.7rem;color:var(--ash);">${res}/${resMax}</span>
+      </div>
+    </div>
+    <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Aspect</div>
+    <div style="font-size:0.8rem;color:var(--ash);font-style:italic;padding:6px 0;">
+      ${G.ssAspectRevealed ? (G.ssAspect?.label || '???') : '— Unknown —'}
+    </div>
+  `;
+}
+
+function renderSSRightPanel() {
+  const right = document.querySelector('.play-right');
+  if (!right) return;
+
+  right.innerHTML = `
+    <div style="display:flex;border-bottom:1px solid var(--border-1);margin-bottom:0;">
+      <button class="ss-tab-btn active" id="ss-tab-echoes" onclick="ssTab('echoes')" style="flex:1;padding:8px 4px;font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;background:none;border:none;color:var(--gold-dim);cursor:pointer;text-transform:uppercase;border-bottom:2px solid var(--gold-dim);">Echoes</button>
+      <button class="ss-tab-btn" id="ss-tab-marks" onclick="ssTab('marks')" style="flex:1;padding:8px 4px;font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;background:none;border:none;color:var(--ash);cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;">Marks</button>
+      <button class="ss-tab-btn" id="ss-tab-world" onclick="ssTab('world')" style="flex:1;padding:8px 4px;font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;background:none;border:none;color:var(--ash);cursor:pointer;text-transform:uppercase;border-bottom:2px solid transparent;">Realm</button>
+    </div>
+    <div id="ss-panel-content" style="flex:1;overflow-y:auto;padding:8px;">
+      ${renderSSEchoes()}
+    </div>
+  `;
+}
+
+function ssTab(tab) {
+  document.querySelectorAll('.ss-tab-btn').forEach(b => {
+    b.style.color = 'var(--ash)';
+    b.style.borderBottom = '2px solid transparent';
+  });
+  const active = document.getElementById('ss-tab-' + tab);
+  if (active) { active.style.color = 'var(--gold-dim)'; active.style.borderBottom = '2px solid var(--gold-dim)'; }
+
+  const panel = document.getElementById('ss-panel-content');
+  if (!panel) return;
+  if (tab === 'echoes') panel.innerHTML = renderSSEchoes();
+  if (tab === 'marks')  panel.innerHTML = renderSSMarks();
+  if (tab === 'world')  panel.innerHTML = renderSSWorld();
+}
+
+function renderSSEchoes() {
+  if (!G.ssEchoes.length) return '<div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">Nothing found yet.</div>';
+  return G.ssEchoes.map(e => `
+    <div style="padding:10px;border:1px solid var(--border-1);border-radius:4px;margin-bottom:8px;background:rgba(255,255,255,0.02);">
+      <div style="font-family:'Cinzel',serif;font-size:0.65rem;color:var(--gold-dim);letter-spacing:0.1em;">${escHtml(e.name)}</div>
+      <div style="font-size:0.75rem;color:var(--ash);font-style:italic;margin-top:4px;line-height:1.5;">${escHtml(e.description)}</div>
+      ${e.effect ? `<div style="font-size:0.7rem;color:var(--parchment-2);margin-top:4px;">Effect: ${escHtml(e.effect)}</div>` : '<div style="font-size:0.65rem;color:var(--border-2);margin-top:4px;font-style:italic;">Effect unknown.</div>'}
+    </div>
+  `).join('');
+}
+
+function renderSSMarks() {
+  if (!G.ssMarks.length) return '<div style="padding:12px;font-size:0.8rem;color:var(--ash);font-style:italic;">No marks yet. Pay attention to what happens when you act.</div>';
+  return G.ssMarks.map(m => `
+    <div style="padding:10px;border-left:2px solid var(--border-2);margin-bottom:8px;padding-left:10px;">
+      <div style="font-size:0.75rem;color:var(--parchment-2);font-style:italic;line-height:1.5;">${escHtml(m)}</div>
+    </div>
+  `).join('');
+}
+
+function renderSSWorld() {
+  const w = G.activeWorld;
+  return `
+    <div style="padding:8px;">
+      <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Phase</div>
+      <div style="font-size:0.8rem;color:var(--parchment-2);margin-bottom:12px;">${SS_PHASES[G.ssPhase] || '—'}</div>
+      <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Location</div>
+      <div style="font-size:0.8rem;color:var(--parchment-2);font-style:italic;margin-bottom:12px;">${G.ssPhase === 'waking' || G.ssPhase === 'post' ? 'Block 9, Outskirts, NQSC' : 'The Dream Realm'}</div>
+      <div style="font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.15em;color:var(--gold-dim);text-transform:uppercase;margin-bottom:6px;">Shadow Level</div>
+      <div style="font-size:0.8rem;color:var(--ash);">${G.ssShadow || 0} / 100</div>
+    </div>
+  `;
+}
+
+// ── QUICK ACTIONS: SS-SPECIFIC ────────────────────────
+function renderSSQuickActions() {
+  const el = document.getElementById('play-quick-actions');
+  if (!el) return;
+
+  const actions = {
+    waking: ['Look around', 'Think about tonight', 'Check the infection mark', 'Go outside'],
+    nightmare: ['Stay still and listen', 'Move toward the light', 'Check yourself for wounds', 'Look for others'],
+    awakening: [],
+    post: ['Check surroundings', 'Find somewhere quiet', 'Focus on the shadow', 'Move through the city'],
+  };
+
+  const phase = G.ssPhase || 'waking';
+  const phaseActions = actions[phase] || [];
+
+  el.innerHTML = phaseActions.map(a =>
+    `<button class="btn btn-ghost" style="font-size:0.65rem;padding:4px 10px;" onclick="quickAction('${a}')">${a}</button>`
+  ).join('');
+}
+
+// ── OPENING SCENE: SHADOW SLAVE ──────────────────────
+async function generateSSOpeningScene() {
+  const c = G.activeChar;
+  setLoading(true);
+
+  const sys = buildSSNarratorSystem('waking');
+  const prompt = `Begin Moros's story. It is the night before the Nightmare takes him. He is in his unit in Block 9. The infection mark has reached his shoulder. He knows what it means. He has not told anyone. Write the opening scene — 2-3 short paragraphs, first person, grounded and plain. End in a moment that invites action. Do not describe what he should do. Just where he is and what he notices.`;
+
+  const text = await callAI(sys, prompt, 600);
+  setLoading(false);
+  if (text) {
+    G.messages.push({ role: 'narrator', text });
+    G.turnCount++;
+    renderMessages();
+
+    // Spell's first acknowledgment
+    setTimeout(() => {
+      const spellMsg = { role: 'spell', text: 'Aspirant detected. Infection progress: critical. Time to First Nightmare: less than 8 hours.' };
+      G.messages.push(spellMsg);
+      renderMessages();
+      saveGameState();
+    }, 1200);
+  }
+}
+
+// ── SS ACTION HANDLER ────────────────────────────────
+async function handleSSAction(actionText) {
+  const sys = buildSSNarratorSystem(G.ssPhase);
+  const context = buildSSContext();
+
+  let promptSuffix = '';
+
+  // Waking world: track nature, count choices
+  if (G.ssPhase === 'waking') {
+    G.ssWakingChoicesMade++;
+    promptSuffix = `\n\nNARRATOR INSTRUCTION: This is Moros's choice ${G.ssWakingChoicesMade} in the Waking World. Respond in 2 short paragraphs. End with another natural moment — don't force options, just let the world continue. ${G.ssWakingChoicesMade >= 3 ? 'End this scene with Moros growing unbearably tired and knowing he cannot fight it any longer.' : ''}`;
+
+    if (G.ssWakingChoicesMade >= 3) {
+      promptSuffix += ' After your narrative, add exactly this line on its own: [TRANSITION:NIGHTMARE]';
+    }
+  }
+
+  if (G.ssPhase === 'nightmare') {
+    promptSuffix = `\n\nNARRATOR INSTRUCTION: Moros is in the First Nightmare. His Aspect has NOT been revealed yet. Write 2-3 tight paragraphs. If Moros is in serious danger or makes a critical decisive action, add [ASPECT:STIRS] at the end of your response. If the trial feels complete and he has survived, add [TRIAL:COMPLETE] at the end.`;
+  }
+
+  const res = await callAI(sys, context + '\n\nMoros: ' + actionText + promptSuffix, 700);
+
+  setLoading(false);
+  if (!res) return;
+
+  // Parse special tags
+  let cleanText = res;
+  let transition = null;
+  let aspectStirs = false;
+  let trialComplete = false;
+
+  if (res.includes('[TRANSITION:NIGHTMARE]')) {
+    cleanText = res.replace('[TRANSITION:NIGHTMARE]', '').trim();
+    transition = 'nightmare';
+  }
+  if (res.includes('[ASPECT:STIRS]')) {
+    cleanText = cleanText.replace('[ASPECT:STIRS]', '').trim();
+    aspectStirs = true;
+  }
+  if (res.includes('[TRIAL:COMPLETE]')) {
+    cleanText = cleanText.replace('[TRIAL:COMPLETE]', '').trim();
+    trialComplete = true;
+  }
+
+  // Score nature
+  ssScoreAction(actionText, cleanText);
+
+  G.messages.push({ role: 'narrator', text: cleanText });
+  G.turnCount++;
+  renderMessages();
+  saveGameState();
+
+  if (transition === 'nightmare') {
+    setTimeout(() => ssTransitionToNightmare(), 1500);
+    return;
+  }
+
+  if (aspectStirs && !G.ssAspectRevealed) {
+    setTimeout(() => ssRevealAspect(), 1000);
+    return;
+  }
+
+  if (trialComplete && G.ssAspectRevealed) {
+    setTimeout(() => ssTrialComplete(), 1500);
+    return;
+  }
+
+  if (G.ssPhase === 'nightmare') renderSSQuickActions();
+  if (G.ssPhase === 'waking') renderSSQuickActions();
+}
+
+// ── PHASE TRANSITIONS ────────────────────────────────
+function ssTransitionToNightmare() {
+  G.ssPhase = 'nightmare';
+  G.ssShadow = 5;
+
+  const spellMsg = { role: 'spell', text: 'Aspirant. Welcome to the Nightmare Spell. Your First Trial begins now. Survive.' };
+  G.messages.push(spellMsg);
+  renderMessages();
+
+  document.getElementById('play-char-class').textContent = SS_PHASES['nightmare'];
+
+  setTimeout(async () => {
+    setLoading(true);
+    const sys = buildSSNarratorSystem('nightmare');
+    const prompt = `Moros has just arrived in the First Nightmare. He is no longer in Block 9. Write the arrival — 2-3 short paragraphs, first person. Describe only what he sees and feels physically. He has no idea where he is. The place is wrong in a way he cannot name. Do not explain the Nightmare Spell mechanics. End with something in the environment that demands a response.`;
+    const text = await callAI(sys, prompt, 600);
+    setLoading(false);
+    if (text) {
+      G.messages.push({ role: 'narrator', text });
+      renderMessages();
+      renderSSQuickActions();
+      renderSSStatPanel();
+      saveGameState();
+    }
+  }, 800);
+}
+
+async function ssRevealAspect() {
+  if (G.ssAspectRevealed) return;
+
+  const category = ssGetAspectCategory();
+  const aspectData = SS_ASPECT_TYPES[category];
+  const reveals = aspectData.reveals;
+  const revealText = reveals[Math.floor(Math.random() * reveals.length)];
+
+  G.ssAspectRevealed = true;
+  G.ssAspect = { category, label: aspectData.label };
+  G.ssShadow = Math.min(100, (G.ssShadow || 5) + 20);
+
+  // Spell message
+  const spellMsg = { role: 'spell', text: 'Aspect awakened. Classification: [REDACTED]. Aspirant status: Active.' };
+  G.messages.push(spellMsg);
+
+  // Aspect reveal narrative
+  G.messages.push({ role: 'aspect-reveal', text: revealText });
+
+  // Add a mark
+  G.ssMarks.push('Something happened when the pressure peaked. The darkness moved differently. Pay attention to when it happens again.');
+
+  renderMessages();
+  renderSSStatPanel();
+  renderSSRightPanel();
+  saveGameState();
+
+  showToast('Aspect awakened.');
+}
+
+function ssTrialComplete() {
+  G.ssPhase = 'post';
+  G.ssShadow = Math.min(100, (G.ssShadow || 20) + 15);
+  G.ssResonance = G.ssResonanceMax;
+
+  const spellMsg = { role: 'spell', text: 'First Trial complete. Aspirant is now Awakened. Returning to Waking World.' };
+  G.messages.push(spellMsg);
+  renderMessages();
+
+  document.getElementById('play-char-class').textContent = SS_PHASES['post'];
+
+  setTimeout(async () => {
+    setLoading(true);
+    const sys = buildSSNarratorSystem('post');
+    const prompt = `Moros survived the First Nightmare and has returned to the Waking World — his unit in Block 9. Write the return in 2-3 short paragraphs, first person. He wakes up in his cot. Everything looks the same. Something is different in him. He does not have words for it yet. End in the present moment.`;
+    const text = await callAI(sys, prompt, 600);
+    setLoading(false);
+    if (text) {
+      G.messages.push({ role: 'narrator', text });
+      renderMessages();
+      renderSSQuickActions();
+      renderSSStatPanel();
+      saveGameState();
+    }
+  }, 1000);
+}
+
+// ── SS NARRATOR SYSTEM ───────────────────────────────
+function buildSSNarratorSystem(phase) {
+  const c = G.activeChar;
+  const w = G.activeWorld;
+  const narratorStyle = c.narratorStyle || '';
+
+  const phaseContext = {
+    waking:    'Moros is in the Waking World. Block 9, the Outskirts of the NQSC. The night before his First Nightmare. He knows the infection mark has reached his shoulder. He has not told anyone. This is his last night as an ordinary person.',
+    nightmare: 'Moros is inside his First Nightmare — a trial created by the Spell. He does not fully understand where he is. His Aspect has not yet revealed itself, though it may be stirring. The Dream Realm operates differently from the real world. Things here are wrong in ways that are hard to name.',
+    awakening: 'Moros has just survived the First Nightmare. His Aspect has awakened. He does not fully understand it yet.',
+    post:      'Moros is Awakened. He has survived his First Nightmare and returned to Block 9. Something has changed in him. He does not have words for it yet. The city looks the same. He is not the same.',
+  };
+
+  const worldLore = w ? `
+WORLD: ${w.name}
+${w.lore ? 'LORE: ' + w.lore : ''}
+${w.description ? w.description : ''}
+  `.trim() : '';
+
+  return `You are the narrator of Moros's story in the world of Shadow Slave.
+
+${worldLore}
+
+CHARACTER: Moros. Male. 5'7". Tan skin. Long dreadlocks. Storm grey eyes. Taciturn. From Block 9, the Outskirts. Grew up watching his back. Trusts nobody. Has a quiet talent for knowing when something is about to go wrong.
+
+CURRENT PHASE: ${phaseContext[phase] || phaseContext.waking}
+
+ASPECT STATUS: ${G.ssAspectRevealed ? 'Awakened. Category: ' + (G.ssAspect?.label || 'Unknown') + '. Do not name specific abilities — let Moros discover through action.' : 'Not yet revealed. Do not hint at it or foreshadow it directly.'}
+
+${narratorStyle}
+
+ABSOLUTE RULES:
+- First person (I / me / my). Never "you" or "your".
+- Short paragraphs. Plain language. No poetic atmosphere.
+- Write what Moros observes. Do not describe his emotions directly.
+- Never invent lore not grounded in Shadow Slave canon.
+- Never name abilities. Discovery only.
+- The Spell is cold, observational, terse. It does not comfort.`;
+}
+
+// ── SS CONTEXT BUILDER ───────────────────────────────
+function buildSSContext() {
+  const recent = G.messages.slice(-8).map(m => {
+    if (m.role === 'player') return 'Moros: ' + m.text;
+    if (m.role === 'narrator') return 'Narrator: ' + m.text;
+    if (m.role === 'spell') return '[SPELL]: ' + m.text;
+    return '';
+  }).filter(Boolean).join('\n\n');
+
+  return (G.campaignSummary ? 'STORY SO FAR: ' + G.campaignSummary + '\n\n' : '') + recent;
+}
+
+// ════════════════════════════════════════════════════════
+//   END SHADOW SLAVE ENGINE
+// ════════════════════════════════════════════════════════
 
 // ── VESPER ───────────────────────────────
 function openVesper(context) {
