@@ -1044,6 +1044,59 @@ select option { background: var(--ink-3); }
   .worlds-grid { padding: 10px; }
 }
 
+
+/* Input mode toggle */
+.input-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.input-mode-btn {
+  font-family: 'Cinzel', serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--ink-3);
+  border: none;
+  color: var(--ash);
+  padding: 0 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-height: 36px;
+}
+.input-mode-btn.active-speak {
+  background: rgba(90,140,180,0.18);
+  color: #8ab4d4;
+  border-right: 1px solid var(--border-2);
+}
+.input-mode-btn.active-act {
+  background: rgba(180,120,60,0.18);
+  color: var(--gold-dim);
+}
+.play-input.mode-speak {
+  border-color: #4a7a9a;
+  font-style: italic;
+}
+.play-input.mode-speak::placeholder { color: #5a8aaa; font-style: italic; }
+.play-input.mode-act { border-color: var(--border-2); }
+.play-input.mode-act::placeholder { color: var(--ash); font-style: italic; }
+.input-mode-label {
+  font-family: 'Cinzel', serif;
+  font-size: 0.5rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  align-self: center;
+}
+.input-mode-label.speak { color: #8ab4d4; background: rgba(90,140,180,0.12); }
+.input-mode-label.act   { color: var(--gold-dim); background: rgba(180,120,60,0.1); }
+
 </style>
 </head>
 <body>
@@ -1204,9 +1257,16 @@ select option { background: var(--ink-3); }
   <!-- Input row -->
   <div class="play-input-row">
     <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
-      <div id="play-quick-actions" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-      <div style="display:flex;gap:8px;">
-        <input class="play-input" id="play-input" placeholder="What do you do..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAction();}"/>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div class="input-mode-toggle">
+          <button class="input-mode-btn active-act" id="mode-btn-act" onclick="setInputMode('act')" title="Describe what you do">⚔ Act</button>
+          <button class="input-mode-btn" id="mode-btn-speak" onclick="setInputMode('speak')" title="Say something out loud">💬 Speak</button>
+        </div>
+        <div id="play-quick-actions" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:stretch;">
+        <input class="play-input mode-act" id="play-input" placeholder="What do you do..."
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAction();}"/>
         <button class="play-send" id="play-send-btn" onclick="sendAction()">Send</button>
       </div>
     </div>
@@ -2039,6 +2099,7 @@ function renderQuickActions() {
 }
 
 function quickAction(text) {
+  setInputMode('act');
   const input = document.getElementById('play-input');
   if (input) { input.value = text; sendAction(); }
 }
@@ -2084,20 +2145,30 @@ async function generateOpeningScene() {
 
 async function sendAction() {
   const input = document.getElementById('play-input');
-  const text = input?.value?.trim();
-  if (!text || G.loading) return;
+  const rawText = input?.value?.trim();
+  if (!rawText || G.loading) return;
   input.value = '';
 
-  G.messages.push({ role: 'player', text });
+  // Format based on mode
+  const isSpeech = G_inputMode === 'speak';
+  const text = isSpeech ? '"' + rawText + '"' : rawText;
+  const displayText = isSpeech ? '💬 ' + text : text;
+
+  G.messages.push({ role: 'player', text: displayText });
   renderMessages();
   setLoading(true);
 
+  // Pass clean action to AI (with speech context if speaking)
+  const aiText = isSpeech
+    ? 'I say aloud: ' + text
+    : rawText;
+
   if (isShadowSlave()) {
-    await handleSSAction(text);
+    await handleSSAction(aiText);
   } else {
     const sys = buildNarratorSystem();
     const context = buildContext();
-    const res = await callAI(sys, context + '\n\nPlayer action: ' + text, 900);
+    const res = await callAI(sys, context + '\n\nPlayer action: ' + aiText, 900);
     setLoading(false);
     if (res) {
       G.messages.push({ role: 'narrator', text: res });
@@ -2781,6 +2852,33 @@ function buildSSContext() {
 // ════════════════════════════════════════════════════════
 //   END SHADOW SLAVE ENGINE
 // ════════════════════════════════════════════════════════
+
+
+// ── INPUT MODE (Speak / Act) ─────────────────────────
+let G_inputMode = 'act'; // 'act' or 'speak'
+
+function setInputMode(mode) {
+  G_inputMode = mode;
+  const input = document.getElementById('play-input');
+  const actBtn = document.getElementById('mode-btn-act');
+  const speakBtn = document.getElementById('mode-btn-speak');
+  if (!input) return;
+
+  if (mode === 'speak') {
+    input.className = 'play-input mode-speak';
+    input.placeholder = 'Say something aloud...';
+    if (actBtn)   { actBtn.className   = 'input-mode-btn'; }
+    if (speakBtn) { speakBtn.className = 'input-mode-btn active-speak'; }
+  } else {
+    input.className = 'play-input mode-act';
+    input.placeholder = 'What do you do...';
+    if (actBtn)   { actBtn.className   = 'input-mode-btn active-act'; }
+    if (speakBtn) { speakBtn.className = 'input-mode-btn'; }
+  }
+  input.focus();
+}
+
+// ── END INPUT MODE ────────────────────────────────────
 
 // ── VESPER ───────────────────────────────
 function openVesper(context) {
